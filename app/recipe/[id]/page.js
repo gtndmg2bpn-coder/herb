@@ -4,12 +4,22 @@ import { getSupabase } from '../../../lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-// Public base for images in the `recipe-images` bucket — same env var the
-// Supabase client uses, so it always points at the right project.
+// Public base for images in the `recipe-images` bucket.
 const IMAGE_BASE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/recipe-images`;
 
-// Attach the unit to the quantity. Short mass/volume units read best with no
-// space (200g, 30ml); word units read best with one (2 tbsp, 3 clove).
+// Friendly UK labels for the allergen codes stored on ingredients.
+const ALLERGEN_LABELS = {
+  milk: 'Milk', eggs: 'Egg', fish: 'Fish', crustaceans: 'Crustaceans',
+  molluscs: 'Molluscs', tree_nuts: 'Tree nuts', peanuts: 'Peanuts',
+  sesame: 'Sesame', soybeans: 'Soya', gluten: 'Gluten', celery: 'Celery',
+  mustard: 'Mustard', sulphites: 'Sulphites', lupin: 'Lupin',
+};
+function labelAllergens(codes) {
+  return (codes || []).map((c) => ALLERGEN_LABELS[c] || c).join(', ');
+}
+
+// Attach the unit to the quantity. Short units read best with no space
+// (200g), word units with one (2 tbsp).
 function formatAmount(quantity, unit) {
   if (quantity == null) return '';
   const u = unit || '';
@@ -20,8 +30,7 @@ export default async function RecipeDetail({ params }) {
   const { id } = params;
   const supabase = getSupabase();
 
-  // 1) Recipe row. select('*') so a column that isn't there can't error it —
-  //    missing macro fields simply become undefined and get filtered out below.
+  // 1) Recipe row.
   const { data: recipe, error: recipeError } = await supabase
     .from('recipes')
     .select('*')
@@ -31,7 +40,7 @@ export default async function RecipeDetail({ params }) {
     notFound();
   }
 
-  // 2) Live cost from recipe_costs. maybeSingle → null instead of throwing.
+  // 2) Live cost.
   const { data: costRow } = await supabase
     .from('recipe_costs')
     .select('cost_gbp')
@@ -39,8 +48,26 @@ export default async function RecipeDetail({ params }) {
     .maybeSingle();
   const cost = costRow?.cost_gbp ?? null;
 
-  // 3) Ingredients — same fetch-and-stitch pattern as the list page.
-  //    quantity lives on recipe_ingredients; name + unit live on ingredients.
+  // 2b) Allergens, rolled up from ingredients via the recipe_allergens view.
+  //     Wrapped so a missing view (if the allergen SQL hasn't run yet) can't
+  //     break the page — it just skips the allergen lines.
+  let contains = [];
+  let mayContain = [];
+  try {
+    const { data: allergenRow } = await supabase
+      .from('recipe_allergens')
+      .select('contains, may_contain')
+      .eq('recipe_id', id)
+      .maybeSingle();
+    contains = allergenRow?.contains ?? [];
+    mayContain = allergenRow?.may_contain ?? [];
+  } catch {
+    // view not present yet — leave both empty
+  }
+  // If something is already a hard "contains", don't also list it as may-contain.
+  mayContain = mayContain.filter((c) => !contains.includes(c));
+
+  // 3) Ingredients — fetch-and-stitch, same pattern as the list page.
   let ingredients = [];
   let ingredientsReadable = true;
   try {
@@ -71,7 +98,6 @@ export default async function RecipeDetail({ params }) {
     ingredientsReadable = false;
   }
 
-  // Show a macro tile only for fields that actually exist and carry a value.
   const tiles = [
     { key: 'kcal', label: 'kcal', value: recipe.kcal, suffix: '' },
     { key: 'protein_g', label: 'Protein', value: recipe.protein_g, suffix: 'g' },
@@ -141,6 +167,35 @@ export default async function RecipeDetail({ params }) {
         )
       ) : (
         <p className="detail-sub">Ingredient list not available yet.</p>
+      )}
+
+      {(contains.length > 0 || mayContain.length > 0) && (
+        <div
+          style={{
+            margin: '18px 0 4px',
+            padding: '12px 14px',
+            borderRadius: '12px',
+            background: '#faf6ef',
+            border: '1px solid #ece3d3',
+          }}
+        >
+          {contains.length > 0 && (
+            <p style={{ margin: 0, fontSize: '0.95rem' }}>
+              <strong>Contains:</strong> {labelAllergens(contains)}
+            </p>
+          )}
+          {mayContain.length > 0 && (
+            <p
+              style={{
+                margin: contains.length ? '6px 0 0' : 0,
+                fontSize: '0.85rem',
+                color: '#8a7f6d',
+              }}
+            >
+              May contain (check the label): {labelAllergens(mayContain)}
+            </p>
+          )}
+        </div>
       )}
     </main>
   );
