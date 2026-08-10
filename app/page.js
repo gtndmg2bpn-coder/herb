@@ -11,15 +11,30 @@ export default async function Home() {
 
   try {
     const supabase = getSupabase();
-    const { data, error } = await supabase
-      .from('recipe_macros')
-      .select(
-        'recipe_id, recipe, kcal_per_portion, protein_per_portion, net_carbs_per_portion, cost_per_portion_gbp, ingredients_missing_price'
-      )
-      .order('recipe');
 
-    if (error) throw error;
-    recipes = data || [];
+    // 1) recipes: name, macros, section (from tonight's schema)
+    const { data: recipeRows, error: recipeErr } = await supabase
+      .from('recipes')
+      .select('id, name, section, kcal, protein_g, carbs_g')
+      .order('name');
+    if (recipeErr) throw recipeErr;
+
+    // 2) live per-recipe cost from the recipe_costs view
+    const { data: costRows, error: costErr } = await supabase
+      .from('recipe_costs')
+      .select('recipe_id, cost_gbp');
+    if (costErr) throw costErr;
+
+    // stitch cost onto each recipe by id
+    const costById = {};
+    (costRows || []).forEach((c) => {
+      costById[c.recipe_id] = c.cost_gbp;
+    });
+
+    recipes = (recipeRows || []).map((r) => ({
+      ...r,
+      cost_gbp: costById[r.id] ?? null,
+    }));
   } catch (err) {
     errorMessage = err.message;
   }
@@ -38,12 +53,17 @@ export default async function Home() {
       ) : (
         <div className="list">
           {recipes.map((r) => (
-            <Link key={r.recipe_id} href={`/recipe/${r.recipe_id}`} className="row">
-              <span className="name">{r.recipe}</span>
+            <Link key={r.id} href={`/recipe/${r.id}`} className="row">
+              <span className="name">{r.name}</span>
               <span className="stats">
-                <b>{r.kcal_per_portion}</b> kcal&nbsp;&middot;&nbsp;
-                {r.protein_per_portion}g protein&nbsp;&middot;&nbsp;
-                {r.net_carbs_per_portion}g net carbs
+                {r.cost_gbp != null && (
+                  <>
+                    <b>&pound;{Number(r.cost_gbp).toFixed(2)}</b>&nbsp;&middot;&nbsp;
+                  </>
+                )}
+                <b>{r.kcal}</b> kcal&nbsp;&middot;&nbsp;
+                {r.protein_g}g protein&nbsp;&middot;&nbsp;
+                {r.carbs_g}g net carbs
               </span>
             </Link>
           ))}
