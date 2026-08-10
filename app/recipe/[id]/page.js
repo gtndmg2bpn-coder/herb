@@ -4,10 +4,8 @@ import { getSupabase } from '../../../lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-// Public base for images in the `recipe-images` bucket.
 const IMAGE_BASE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/recipe-images`;
 
-// Friendly UK labels for the allergen codes stored on ingredients.
 const ALLERGEN_LABELS = {
   milk: 'Milk', eggs: 'Egg', fish: 'Fish', crustaceans: 'Crustaceans',
   molluscs: 'Molluscs', tree_nuts: 'Tree nuts', peanuts: 'Peanuts',
@@ -18,19 +16,22 @@ function labelAllergens(codes) {
   return (codes || []).map((c) => ALLERGEN_LABELS[c] || c).join(', ');
 }
 
-// Attach the unit to the quantity. Short units read best with no space
-// (200g), word units with one (2 tbsp).
 function formatAmount(quantity, unit) {
   if (quantity == null) return '';
   const u = unit || '';
   return u.length <= 2 ? `${quantity}${u}` : `${quantity} ${u}`;
 }
 
+// Split the stored method text into individual lines for display.
+function methodLines(method) {
+  if (!method) return [];
+  return method.split('\n').map((l) => l.trim()).filter(Boolean);
+}
+
 export default async function RecipeDetail({ params }) {
   const { id } = params;
   const supabase = getSupabase();
 
-  // 1) Recipe row.
   const { data: recipe, error: recipeError } = await supabase
     .from('recipes')
     .select('*')
@@ -40,7 +41,6 @@ export default async function RecipeDetail({ params }) {
     notFound();
   }
 
-  // 2) Live cost.
   const { data: costRow } = await supabase
     .from('recipe_costs')
     .select('cost_gbp')
@@ -48,9 +48,6 @@ export default async function RecipeDetail({ params }) {
     .maybeSingle();
   const cost = costRow?.cost_gbp ?? null;
 
-  // 2b) Allergens, rolled up from ingredients via the recipe_allergens view.
-  //     Wrapped so a missing view (if the allergen SQL hasn't run yet) can't
-  //     break the page — it just skips the allergen lines.
   let contains = [];
   let mayContain = [];
   try {
@@ -61,13 +58,9 @@ export default async function RecipeDetail({ params }) {
       .maybeSingle();
     contains = allergenRow?.contains ?? [];
     mayContain = allergenRow?.may_contain ?? [];
-  } catch {
-    // view not present yet — leave both empty
-  }
-  // If something is already a hard "contains", don't also list it as may-contain.
+  } catch {}
   mayContain = mayContain.filter((c) => !contains.includes(c));
 
-  // 3) Ingredients — fetch-and-stitch, same pattern as the list page.
   let ingredients = [];
   let ingredientsReadable = true;
   try {
@@ -76,7 +69,6 @@ export default async function RecipeDetail({ params }) {
       .select('quantity, ingredient_id')
       .eq('recipe_id', id);
     if (riErr) throw riErr;
-
     const ids = (riRows || []).map((r) => r.ingredient_id);
     const ingMap = {};
     if (ids.length) {
@@ -89,7 +81,6 @@ export default async function RecipeDetail({ params }) {
         ingMap[i.id] = i;
       });
     }
-
     ingredients = (riRows || []).map((r) => ({
       name: ingMap[r.ingredient_id]?.name || 'Unknown ingredient',
       amount: formatAmount(r.quantity, ingMap[r.ingredient_id]?.unit),
@@ -97,6 +88,8 @@ export default async function RecipeDetail({ params }) {
   } catch {
     ingredientsReadable = false;
   }
+
+  const steps = methodLines(recipe.method);
 
   const tiles = [
     { key: 'kcal', label: 'kcal', value: recipe.kcal, suffix: '' },
@@ -117,13 +110,8 @@ export default async function RecipeDetail({ params }) {
           src={`${IMAGE_BASE}/${recipe.image_id}.jpg`}
           alt={recipe.name}
           style={{
-            display: 'block',
-            width: '100%',
-            height: '280px',
-            objectFit: 'cover',
-            borderRadius: '14px',
-            margin: '14px 0',
-            background: '#ece7df',
+            display: 'block', width: '100%', height: '280px', objectFit: 'cover',
+            borderRadius: '14px', margin: '14px 0', background: '#ece7df',
           }}
         />
       )}
@@ -136,17 +124,12 @@ export default async function RecipeDetail({ params }) {
       <div className="macros">
         {tiles.map((t) => (
           <div className="macro" key={t.key}>
-            <div className="v">
-              {t.value}
-              {t.suffix}
-            </div>
+            <div className="v">{t.value}{t.suffix}</div>
             <div className="l">{t.label}</div>
           </div>
         ))}
         <div className="macro cost">
-          <div className="v">
-            {cost != null ? `£${Number(cost).toFixed(2)}` : '—'}
-          </div>
+          <div className="v">{cost != null ? `£${Number(cost).toFixed(2)}` : '—'}</div>
           <div className="l">Cost</div>
         </div>
       </div>
@@ -169,14 +152,43 @@ export default async function RecipeDetail({ params }) {
         <p className="detail-sub">Ingredient list not available yet.</p>
       )}
 
+      {steps.length > 0 && (
+        <>
+          <p className="section-label">Method</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {steps.map((line, i) => {
+              const isTip = line.startsWith('💡');
+              return (
+                <p
+                  key={i}
+                  style={{
+                    margin: 0,
+                    lineHeight: 1.5,
+                    ...(isTip
+                      ? {
+                          marginTop: '6px',
+                          padding: '10px 14px',
+                          borderRadius: '12px',
+                          background: '#f3efe6',
+                          fontStyle: 'italic',
+                          color: '#6f6552',
+                        }
+                      : {}),
+                  }}
+                >
+                  {line}
+                </p>
+              );
+            })}
+          </div>
+        </>
+      )}
+
       {(contains.length > 0 || mayContain.length > 0) && (
         <div
           style={{
-            margin: '18px 0 4px',
-            padding: '12px 14px',
-            borderRadius: '12px',
-            background: '#faf6ef',
-            border: '1px solid #ece3d3',
+            margin: '18px 0 4px', padding: '12px 14px', borderRadius: '12px',
+            background: '#faf6ef', border: '1px solid #ece3d3',
           }}
         >
           {contains.length > 0 && (
@@ -185,13 +197,7 @@ export default async function RecipeDetail({ params }) {
             </p>
           )}
           {mayContain.length > 0 && (
-            <p
-              style={{
-                margin: contains.length ? '6px 0 0' : 0,
-                fontSize: '0.85rem',
-                color: '#8a7f6d',
-              }}
-            >
+            <p style={{ margin: contains.length ? '6px 0 0' : 0, fontSize: '0.85rem', color: '#8a7f6d' }}>
               May contain (check the label): {labelAllergens(mayContain)}
             </p>
           )}
