@@ -1,6 +1,7 @@
 'use client';
 // app/dashboard/page.js
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getBrowserClient } from '../../lib/supabaseBrowser';
@@ -99,7 +100,12 @@ export default function DashboardPage() {
         <p>No profile found yet. Complete onboarding first.</p>
       )}
 
-      <button type="button" onClick={logout}>Log out</button>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 16 }}>
+        {/* KIMI NOTE: back-link placed beside Log out so the protected stub is reachable
+            from the recipe list and can return there without changing auth behaviour. */}
+        <Link href="/">Browse recipes</Link>
+        <button type="button" onClick={logout}>Log out</button>
+      </div>
     </main>
   );
 }
