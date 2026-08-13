@@ -43,6 +43,12 @@ export default async function Home() {
       <div className="masthead">
         <h1>HERB — Keto recipes</h1>
         <p>Per-portion macros and cost, rolled up live from the database.</p>
+        {/* KIMI NOTE: static front-door links only. The homepage stays a server component
+            and cannot know the browser session, so Log in / Sign up always render. */}
+        <nav style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+          <Link href="/login">Log in</Link>
+          <Link href="/signup">Sign up</Link>
+        </nav>
       </div>
       {errorMessage ? (
         <div className="error">
