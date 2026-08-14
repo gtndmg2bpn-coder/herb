@@ -217,7 +217,6 @@ export default function DashboardPage() {
     setSpendRows(spends || []);
     setIntakeRows(intake || []);
   }
-
   useEffect(() => {
     let alive = true;
 
