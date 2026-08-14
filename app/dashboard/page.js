@@ -503,3 +503,155 @@ export default function DashboardPage() {
                       <div style={{ fontSize: 12, color: '#666', textTransform: 'capitalize' }}>{meal}</div>
 
                       {slot?.eating_out ? (
+                        <div>
+                          <div>{slot.eating_out_label || 'Eating out'}</div>
+                          <div style={{ fontSize: 12, color: '#666' }}>
+                            est. {money(slot.est_cost_pence)} · {slot.est_kcal ?? '—'} kcal
+                          </div>
+                        </div>
+                      ) : recipe ? (
+                        <div>
+                          <Link href={`/recipe/${recipe.id}`}>{recipe.name}</Link>
+                          <div style={{ fontSize: 12, color: '#666' }}>
+                            {recipe.kcal ?? '—'} kcal · {money(Math.round((costByRecipe[recipe.id] ?? 0) * 100 * (slot.portions ?? householdPortions)))}
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                            <button type="button" disabled={busy} onClick={() => openChooser(slotDate, meal, recipe.id)}>Swap</button>
+                            <button type="button" disabled={busy} onClick={() => editPortions(slot)}>Portions: {slot.portions ?? householdPortions}</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button type="button" disabled={busy} onClick={() => openChooser(slotDate, meal, null)}>+ plan a meal</button>
+                      )}
+
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                        <button type="button" disabled={busy} onClick={() => setEatingForm({ slotDate, meal, label: '', costPounds: '', kcal: '', proteinG: '', carbsG: '', fatG: '' })}>
+                          Eating out
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {chooser ? (
+        <section style={{ border: '1px solid #ddd', borderRadius: 12, padding: 16 }}>
+          <h2 style={{ marginTop: 0 }}>Choose a swap</h2>
+          {chooser.options.length ? chooser.options.map((option) => (
+            <div key={option.id} style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #eee', padding: '8px 0' }}>
+              <span>{option.name} <span style={{ color: '#666' }}>({option.kcal ?? '—'} kcal)</span></span>
+              <span style={{ display: 'flex', gap: 6 }}>
+                <button type="button" disabled={busy} onClick={() => chooseSwap(option, false)}>Just this once</button>
+                <button type="button" disabled={busy} onClick={() => chooseSwap(option, true)}>Never again</button>
+              </span>
+            </div>
+          )) : <p>No safe alternatives found with the current allergens/dislikes.</p>}
+          <button type="button" disabled={busy} onClick={() => setChooser(null)}>Close</button>
+        </section>
+      ) : null}
+
+      {eatingForm ? (
+        <section style={{ border: '1px solid #ddd', borderRadius: 12, padding: 16, display: 'grid', gap: 8 }}>
+          <h2 style={{ marginTop: 0 }}>Mark eating out</h2>
+          <input placeholder="Label (e.g. pub dinner)" value={eatingForm.label} onChange={(event) => setEatingForm({ ...eatingForm, label: event.target.value })} />
+          <input placeholder="Est. cost (£)" value={eatingForm.costPounds} onChange={(event) => setEatingForm({ ...eatingForm, costPounds: event.target.value })} />
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input placeholder="kcal" value={eatingForm.kcal} onChange={(event) => setEatingForm({ ...eatingForm, kcal: event.target.value })} />
+            <input placeholder="protein g" value={eatingForm.proteinG} onChange={(event) => setEatingForm({ ...eatingForm, proteinG: event.target.value })} />
+            <input placeholder="carbs g" value={eatingForm.carbsG} onChange={(event) => setEatingForm({ ...eatingForm, carbsG: event.target.value })} />
+            <input placeholder="fat g" value={eatingForm.fatG} onChange={(event) => setEatingForm({ ...eatingForm, fatG: event.target.value })} />
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" disabled={busy} onClick={submitEatingOut}>Save eating out</button>
+            <button type="button" disabled={busy} onClick={() => setEatingForm(null)}>Cancel</button>
+          </div>
+        </section>
+      ) : null}
+
+      <section style={{ border: '1px solid #ddd', borderRadius: 12, padding: 16 }}>
+        <h2 style={{ marginTop: 0 }}>Pantry</h2>
+        {LOCATIONS.map((location) => (
+          <div key={location} style={{ marginBottom: 12 }}>
+            <h3 style={{ textTransform: 'capitalize' }}>{location}</h3>
+            {pantryStock.filter((row) => row.location === location).length ? pantryStock.filter((row) => row.location === location).map((row) => {
+              const badge = expiryBadge(row);
+              return (
+                <div key={`${row.location}|${row.ingredient_id}|${row.recipe_id}`} style={{ display: 'flex', gap: 8, alignItems: 'center', borderTop: '1px solid #eee', padding: '6px 0' }}>
+                  <span style={{ flex: 1 }}>{stockName(row)} — {row.quantity}</span>
+                  {badge ? <span style={{ color: badge.colour, fontSize: 12 }}>{badge.text}</span> : null}
+                  <button type="button" disabled={busy} onClick={() => consumeStock(row)}>Consume</button>
+                </div>
+              );
+            }) : <p style={{ color: '#666', margin: '4px 0' }}>No stock.</p>}
+          </div>
+        ))}
+
+        <div style={{ display: 'grid', gap: 8, borderTop: '1px solid #eee', paddingTop: 12 }}>
+          <strong>Add stock</strong>
+          <select value={pantryForm.itemKind} onChange={(event) => setPantryForm({ ...pantryForm, itemKind: event.target.value })}>
+            <option value="ingredient">ingredient</option>
+            <option value="cooked_portion">cooked_portion</option>
+          </select>
+          {pantryForm.itemKind === 'ingredient' ? (
+            <select value={pantryForm.ingredientId} onChange={(event) => setPantryForm({ ...pantryForm, ingredientId: event.target.value })}>
+              <option value="">Choose ingredient…</option>
+              {ingredients.map((ingredient) => <option key={ingredient.id} value={ingredient.id}>{ingredient.name}</option>)}
+            </select>
+          ) : (
+            <select value={pantryForm.recipeId} onChange={(event) => setPantryForm({ ...pantryForm, recipeId: event.target.value })}>
+              <option value="">Choose recipe…</option>
+              {recipes.map((recipe) => <option key={recipe.id} value={recipe.id}>{recipe.name}</option>)}
+            </select>
+          )}
+          <input placeholder="Label fallback (optional)" value={pantryForm.label} onChange={(event) => setPantryForm({ ...pantryForm, label: event.target.value })} />
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input placeholder="Quantity" value={pantryForm.quantity} onChange={(event) => setPantryForm({ ...pantryForm, quantity: event.target.value })} />
+            <input placeholder="Unit" value={pantryForm.unit} onChange={(event) => setPantryForm({ ...pantryForm, unit: event.target.value })} />
+            <select value={pantryForm.location} onChange={(event) => setPantryForm({ ...pantryForm, location: event.target.value })}>
+              {LOCATIONS.map((location) => <option key={location} value={location}>{location}</option>)}
+            </select>
+            <input placeholder="Cost (£)" value={pantryForm.costPounds} onChange={(event) => setPantryForm({ ...pantryForm, costPounds: event.target.value })} />
+            <input type="date" value={pantryForm.expiryDate} onChange={(event) => setPantryForm({ ...pantryForm, expiryDate: event.target.value })} />
+          </div>
+          <button type="button" disabled={busy} onClick={submitPantryAdd}>Add pantry item</button>
+        </div>
+      </section>
+
+      <section style={{ border: '1px solid #ddd', borderRadius: 12, padding: 16, display: 'grid', gap: 12 }}>
+        <h2 style={{ marginTop: 0 }}>Log off-plan</h2>
+        <input placeholder="Description" value={intakeForm.description} onChange={(event) => setIntakeForm({ ...intakeForm, description: event.target.value })} />
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input placeholder="kcal" value={intakeForm.kcal} onChange={(event) => setIntakeForm({ ...intakeForm, kcal: event.target.value })} />
+          <input placeholder="protein g" value={intakeForm.proteinG} onChange={(event) => setIntakeForm({ ...intakeForm, proteinG: event.target.value })} />
+          <input placeholder="carbs g" value={intakeForm.carbsG} onChange={(event) => setIntakeForm({ ...intakeForm, carbsG: event.target.value })} />
+          <input placeholder="fat g" value={intakeForm.fatG} onChange={(event) => setIntakeForm({ ...intakeForm, fatG: event.target.value })} />
+        </div>
+        <button type="button" disabled={busy} onClick={submitIntake}>Log intake</button>
+        {intakeRows.map((row) => (
+          <p key={row.id} style={{ margin: 0, color: '#666' }}>
+            {row.intake_date}: {row.description} — {row.kcal ?? '—'} kcal
+            {row.confidence === 'ESTIMATED' ? ' (estimated — confirm?)' : ''}
+          </p>
+        ))}
+
+        <h2>Log spend</h2>
+        <p style={{ margin: 0 }}>This week: <b>{money(weekSpendPence)}</b></p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input placeholder="Amount (£)" value={spendForm.amountPounds} onChange={(event) => setSpendForm({ ...spendForm, amountPounds: event.target.value })} />
+          <select value={spendForm.category} onChange={(event) => setSpendForm({ ...spendForm, category: event.target.value })}>
+            {SPEND_CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}
+          </select>
+          <button type="button" disabled={busy} onClick={submitSpend}>Log spend</button>
+        </div>
+      </section>
+
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <Link href="/">Browse recipes</Link>
+      </div>
+    </main>
+  );
+}
