@@ -1,438 +1,505 @@
--- ============================================================================
--- HERB — Dashboard v1  ·  SECTION A: SCHEMA + EVENT-LOG SPINE + ACTION LAYER
--- Claude-authored. Run this WHOLE file in the Supabase SQL Editor, top to bottom,
--- BEFORE any JS is touched. This is GATE 1 — nothing in Section B/C is valid until
--- this runs clean on the live DB and you report the result back.
---
--- Conventions matched to the live schema (ground truth from the repo):
---   * money is INTEGER PENCE, never floats
---   * derived quantities are VIEWS over an append-only ledger, never mutable columns
---     (mirrors the existing weight_log -> weight_current pattern exactly)
---   * every user table gets RLS scoped to auth.uid()
---   * views are security_invoker
---   * ledgers are RPC-only: no client insert/update/delete policy exists, so the
---     ONLY write path is a security-definer action function. This is what makes
---     "actions are the only mutation path" a hard invariant, not a convention —
---     so voice / receipt / n8n adapters later plug onto the same actions for free.
--- ============================================================================
+'use client';
+// app/dashboard/page.js
 
--- ---------------------------------------------------------------------------
--- 1. STATE — the meal plan (MUTABLE, editable; NOT an event-log)
---    day x meal -> a recipe, OR an eating-out marker with est. cost + macros.
--- ---------------------------------------------------------------------------
-create table if not exists public.plan_slots (
-  id               uuid primary key default gen_random_uuid(),
-  user_id          uuid not null references auth.users(id) on delete cascade,
-  slot_date        date not null,
-  meal             text not null check (meal in ('breakfast','lunch','dinner','snack')),
-  recipe_id        uuid references public.recipes(id) on delete set null,
-  eating_out       boolean not null default false,
-  eating_out_label text,
-  est_cost_pence   integer check (est_cost_pence is null or est_cost_pence >= 0),
-  est_kcal         integer,
-  est_protein_g    integer,
-  est_carbs_g      integer,
-  est_fat_g        integer,
-  portions         numeric not null default 1 check (portions > 0),
-  capacity         text check (capacity is null or capacity in ('cook','batch','assemble')),
-  created_at       timestamptz not null default now(),
-  updated_at       timestamptz not null default now(),
-  unique (user_id, slot_date, meal)
-);
-create index if not exists plan_slots_user_date_idx on public.plan_slots (user_id, slot_date);
+import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { getBrowserClient } from '../../lib/supabaseBrowser';
+import {
+  swapMeal,
+  markEatingOut,
+  setPortions,
+  addPantryItems,
+  consumePantryItem,
+  logSpend,
+  logOffPlanIntake,
+  logWeight,
+} from '../../lib/actions';
 
--- ---------------------------------------------------------------------------
--- 2. EVENT-LOG SPINE — the pantry (APPEND-ONLY ledger; stock is DERIVED)
---    A cooked meal lives here as a 'cooked_portion'; a raw ingredient as
---    'ingredient'. quantity is a SIGNED delta: + added, - consumed. Stock is a
---    SUM over this ledger. THIS TABLE IS NEVER UPDATED IN PLACE.
--- ---------------------------------------------------------------------------
-create table if not exists public.pantry_log (
-  id            uuid primary key default gen_random_uuid(),
-  user_id       uuid not null references auth.users(id) on delete cascade,
-  item_kind     text not null check (item_kind in ('ingredient','cooked_portion')),
-  ingredient_id uuid references public.ingredients(id) on delete restrict,
-  recipe_id     uuid references public.recipes(id) on delete restrict,
-  label         text,                        -- human fallback when neither id applies
-  quantity      numeric not null,            -- SIGNED: + added, - consumed
-  unit          text,
-  location      text not null check (location in ('fridge','freezer','cupboard')),
-  cost_pence    integer check (cost_pence is null or cost_pence >= 0),
-  expiry_date   date,
-  note          text,
-  created_at    timestamptz not null default now(),
-  constraint pantry_item_identified check (
-    (item_kind = 'ingredient'     and ingredient_id is not null) or
-    (item_kind = 'cooked_portion' and recipe_id     is not null) or
-    (ingredient_id is null and recipe_id is null and label is not null)
-  )
-);
-create index if not exists pantry_log_user_idx on public.pantry_log (user_id);
+const MEALS = ['breakfast', 'lunch', 'dinner'];
+const LOCATIONS = ['fridge', 'freezer', 'cupboard'];
+const SPEND_CATEGORIES = ['grocery', 'eating_out', 'other'];
 
--- Derived stock: signed SUM over the ledger. The spine's read side. Never a column.
--- drop-then-create (not "create or replace") so a pre-existing view of this name with
--- different columns can't trigger 42P16. Dropping a VIEW never loses data.
-drop view if exists public.pantry_stock cascade;
-create view public.pantry_stock
-with (security_invoker = true) as
-  select
-    user_id,
-    item_kind,
-    ingredient_id,
-    recipe_id,
-    location,
-    sum(quantity) as quantity
-  from public.pantry_log
-  group by user_id, item_kind, ingredient_id, recipe_id, location
-  having sum(quantity) > 0;
+function isoDate(date) {
+  return date.toISOString().slice(0, 10);
+}
 
--- Lots view: the positive ADD rows, each carrying its own cost/expiry. Feeds the
--- soft-shelf-life WARN badges now and FEFO picking later. (v1 simplification: a lot
--- is not decremented as it is consumed, so a lot may over-report against stock —
--- acceptable because shelf-life is WARN-only; precise lot depletion is v2 FEFO.)
-drop view if exists public.pantry_lots cascade;
-create view public.pantry_lots
-with (security_invoker = true) as
-  select id, user_id, item_kind, ingredient_id, recipe_id, label,
-         quantity, unit, location, cost_pence, expiry_date, note, created_at
-  from public.pantry_log
-  where quantity > 0;
+function addDays(iso, days) {
+  const date = new Date(`${iso}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return isoDate(date);
+}
 
--- ---------------------------------------------------------------------------
--- 3. LEDGERS — spend + off-plan intake (both APPEND-ONLY)
--- ---------------------------------------------------------------------------
-create table if not exists public.spend_log (
-  id           uuid primary key default gen_random_uuid(),
-  user_id      uuid not null references auth.users(id) on delete cascade,
-  spend_date   date not null default current_date,
-  amount_pence integer not null check (amount_pence >= 0),
-  category     text not null default 'grocery'
-                 check (category in ('grocery','eating_out','other')),
-  note         text,
-  created_at   timestamptz not null default now()
-);
-create index if not exists spend_log_user_idx on public.spend_log (user_id, spend_date);
+function dayLabel(iso) {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+}
 
-create table if not exists public.intake_log (
-  id          uuid primary key default gen_random_uuid(),
-  user_id     uuid not null references auth.users(id) on delete cascade,
-  intake_date date not null default current_date,
-  description text not null,
-  kcal        integer,
-  protein_g   integer,
-  carbs_g     integer,
-  fat_g       integer,
-  confidence  text not null default 'ESTIMATED'
-                check (confidence in
-                  ('CONFIRMED','ESTIMATED','UNVERIFIED','USER_CONFIRMED','USER_SUPPLIED')),
-  source      text,
-  created_at  timestamptz not null default now()
-);
-create index if not exists intake_log_user_idx on public.intake_log (user_id, intake_date);
+function money(pence) {
+  if (pence == null) return '—';
+  return `£${(Number(pence) / 100).toFixed(2)}`;
+}
 
--- ---------------------------------------------------------------------------
--- 4. PROFILE ADDITIONS — household default + recipe-level "never again"
--- ---------------------------------------------------------------------------
-alter table public.profiles
-  add column if not exists household_portions integer not null default 1;
-alter table public.profiles
-  add column if not exists disliked_recipe_ids uuid[] not null default '{}';
+function poundsToPence(value) {
+  if (value === '' || value == null) return null;
+  const pounds = Number(value);
+  if (!Number.isFinite(pounds) || pounds < 0) return null;
+  return Math.round(pounds * 100);
+}
 
--- ---------------------------------------------------------------------------
--- 5. RLS  — read-own on all; NO write policies on ledgers/state (RPC-only writes).
---    plan_slots is mutable STATE, but is still mutated only via its actions, so it
---    also gets read-own + writes-via-RPC. Direct client writes are denied by the
---    absence of insert/update/delete policies.
--- ---------------------------------------------------------------------------
-alter table public.plan_slots enable row level security;
-alter table public.pantry_log enable row level security;
-alter table public.spend_log  enable row level security;
-alter table public.intake_log enable row level security;
+function optionalNumber(value) {
+  if (value === '' || value == null) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
-drop policy if exists plan_slots_read_own on public.plan_slots;
-create policy plan_slots_read_own on public.plan_slots
-  for select using (auth.uid() = user_id);
+function formatWeight(weightKg, units) {
+  if (weightKg == null) return '—';
+  if (units === 'imperial') {
+    const totalLb = Number(weightKg) * 2.2046226218;
+    const stone = Math.floor(totalLb / 14);
+    const pounds = Math.round(totalLb - stone * 14);
+    return `${stone} st ${pounds} lb`;
+  }
+  return `${Number(weightKg).toFixed(1)} kg`;
+}
 
-drop policy if exists pantry_log_read_own on public.pantry_log;
-create policy pantry_log_read_own on public.pantry_log
-  for select using (auth.uid() = user_id);
+function slotKey(slotDate, meal) {
+  return `${slotDate}|${meal}`;
+}
 
-drop policy if exists spend_log_read_own on public.spend_log;
-create policy spend_log_read_own on public.spend_log
-  for select using (auth.uid() = user_id);
+export default function DashboardPage() {
+  const router = useRouter();
 
-drop policy if exists intake_log_read_own on public.intake_log;
-create policy intake_log_read_own on public.intake_log
-  for select using (auth.uid() = user_id);
+  const [checking, setChecking] = useState(true);
+  const [session, setSession] = useState(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
 
--- ---------------------------------------------------------------------------
--- 6. ACTION LAYER — the fixed vocabulary. Every mutation goes through one of
---    these. security definer so they can write past the (write-denying) RLS,
---    but each re-derives user_id from auth.uid() and never trusts a passed id.
--- ---------------------------------------------------------------------------
+  const [profile, setProfile] = useState(null);
+  const [currentWeight, setCurrentWeight] = useState(null);
+  const [weightRows, setWeightRows] = useState([]);
 
--- swap_meal: plan a recipe into a slot (upsert). If p_never_again, the recipe that
--- was there is added to profiles.disliked_recipe_ids so it is not suggested again.
-create or replace function public.swap_meal(
-  p_slot_date  date,
-  p_meal       text,
-  p_recipe_id  uuid,
-  p_never_again boolean default false
-) returns public.plan_slots
-language plpgsql security definer set search_path = public as $$
-declare
-  v_uid  uuid := auth.uid();
-  v_prev uuid;
-  v_row  public.plan_slots;
-begin
-  if v_uid is null then raise exception 'not authenticated'; end if;
+  const [planSlots, setPlanSlots] = useState([]);
+  const [recipes, setRecipes] = useState([]);
+  const [ingredients, setIngredients] = useState([]);
+  const [costByRecipe, setCostByRecipe] = useState({});
+  const [allergensByRecipe, setAllergensByRecipe] = useState({});
 
-  select recipe_id into v_prev
-    from public.plan_slots
-   where user_id = v_uid and slot_date = p_slot_date and meal = p_meal;
+  const [pantryStock, setPantryStock] = useState([]);
+  const [pantryLots, setPantryLots] = useState([]);
+  const [spendRows, setSpendRows] = useState([]);
+  const [intakeRows, setIntakeRows] = useState([]);
 
-  insert into public.plan_slots (user_id, slot_date, meal, recipe_id, eating_out)
-  values (v_uid, p_slot_date, p_meal, p_recipe_id, false)
-  on conflict (user_id, slot_date, meal) do update
-    set recipe_id        = excluded.recipe_id,
-        eating_out       = false,
-        eating_out_label = null,
-        updated_at       = now()
-  returning * into v_row;
+  const [weightInput, setWeightInput] = useState('');
+  const [chooser, setChooser] = useState(null);
+  const [eatingForm, setEatingForm] = useState(null);
+  const [pantryForm, setPantryForm] = useState({
+    itemKind: 'ingredient',
+    ingredientId: '',
+    recipeId: '',
+    label: '',
+    quantity: '',
+    unit: '',
+    location: 'fridge',
+    costPounds: '',
+    expiryDate: '',
+  });
+  const [intakeForm, setIntakeForm] = useState({ description: '', kcal: '', proteinG: '', carbsG: '', fatG: '' });
+  const [spendForm, setSpendForm] = useState({ amountPounds: '', category: 'grocery' });
 
-  if p_never_again and v_prev is not null then
-    update public.profiles
-       set disliked_recipe_ids =
-             (select array(select distinct e
-                             from unnest(coalesce(disliked_recipe_ids,'{}') || v_prev) e))
-     where id = v_uid;
-  end if;
+  const today = isoDate(new Date());
+  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(today, index)), [today]);
+  const weekEnd = weekDays[6];
 
-  return v_row;
-end;
-$$;
+  const recipeById = useMemo(() => Object.fromEntries(recipes.map((recipe) => [recipe.id, recipe])), [recipes]);
+  const ingredientById = useMemo(() => Object.fromEntries(ingredients.map((ingredient) => [ingredient.id, ingredient])), [ingredients]);
+  const slotByKey = useMemo(() => Object.fromEntries(planSlots.map((slot) => [slotKey(slot.slot_date, slot.meal), slot])), [planSlots]);
+  const householdPortions = profile?.household_portions ?? 1;
 
--- mark_eating_out: replace a slot with an eating-out marker + est cost/macros.
-create or replace function public.mark_eating_out(
-  p_slot_date     date,
-  p_meal          text,
-  p_label         text,
-  p_est_cost_pence integer default null,
-  p_est_kcal      integer default null,
-  p_est_protein_g integer default null,
-  p_est_carbs_g   integer default null,
-  p_est_fat_g     integer default null
-) returns public.plan_slots
-language plpgsql security definer set search_path = public as $$
-declare
-  v_uid uuid := auth.uid();
-  v_row public.plan_slots;
-begin
-  if v_uid is null then raise exception 'not authenticated'; end if;
+  async function loadAll(liveSession) {
+    if (!liveSession) return;
+    const supabase = getBrowserClient();
+    const uid = liveSession.user.id;
 
-  insert into public.plan_slots
-    (user_id, slot_date, meal, recipe_id, eating_out, eating_out_label,
-     est_cost_pence, est_kcal, est_protein_g, est_carbs_g, est_fat_g)
-  values
-    (v_uid, p_slot_date, p_meal, null, true, p_label,
-     p_est_cost_pence, p_est_kcal, p_est_protein_g, p_est_carbs_g, p_est_fat_g)
-  on conflict (user_id, slot_date, meal) do update
-    set recipe_id        = null,
-        eating_out       = true,
-        eating_out_label = excluded.eating_out_label,
-        est_cost_pence   = excluded.est_cost_pence,
-        est_kcal         = excluded.est_kcal,
-        est_protein_g    = excluded.est_protein_g,
-        est_carbs_g      = excluded.est_carbs_g,
-        est_fat_g        = excluded.est_fat_g,
-        updated_at       = now()
-  returning * into v_row;
+    const { data: prof, error: profError } = await supabase
+      .from('profiles')
+      .select('display_name, start_weight_kg, goal_weight_kg, target_kcal, target_protein_g, target_carbs_g, target_fat_g, diet, preferred_units, household_portions, disliked_recipe_ids, allergens, dislikes')
+      .eq('id', uid)
+      .maybeSingle();
+    if (profError) throw profError;
 
-  return v_row;
-end;
-$$;
+    const { data: current, error: currentError } = await supabase
+      .from('weight_current')
+      .select('weight_kg')
+      .eq('user_id', uid)
+      .maybeSingle();
+    if (currentError) throw currentError;
 
--- set_portions: override portions for one slot (household default lives on profile).
-create or replace function public.set_portions(
-  p_slot_date date,
-  p_meal      text,
-  p_portions  numeric
-) returns public.plan_slots
-language plpgsql security definer set search_path = public as $$
-declare
-  v_uid uuid := auth.uid();
-  v_row public.plan_slots;
-begin
-  if v_uid is null then raise exception 'not authenticated'; end if;
-  if p_portions is null or p_portions <= 0 then
-    raise exception 'portions must be > 0';
-  end if;
+    const { data: weights, error: weightsError } = await supabase
+      .from('weight_log')
+      .select('weight_kg, created_at')
+      .eq('user_id', uid)
+      .order('created_at', { ascending: true });
+    if (weightsError) throw weightsError;
 
-  update public.plan_slots
-     set portions = p_portions, updated_at = now()
-   where user_id = v_uid and slot_date = p_slot_date and meal = p_meal
-  returning * into v_row;
+    const { data: slots, error: slotsError } = await supabase
+      .from('plan_slots')
+      .select('*')
+      .eq('user_id', uid)
+      .gte('slot_date', today)
+      .lte('slot_date', weekEnd)
+      .order('slot_date', { ascending: true });
+    if (slotsError) throw slotsError;
 
-  if not found then raise exception 'no plan slot for that day/meal'; end if;
-  return v_row;
-end;
-$$;
+    const { data: recipeRows, error: recipesError } = await supabase
+      .from('recipes')
+      .select('id, name, section, kcal, protein_g, carbs_g, fat_g, fibre_g, portions, image_id')
+      .order('name');
+    if (recipesError) throw recipesError;
 
--- add_pantry_items: append one or more POSITIVE stock rows from a JSON array.
--- Each element: {item_kind, ingredient_id?, recipe_id?, label?, quantity, unit?,
---                location, cost_pence?, expiry_date?, note?}
-create or replace function public.add_pantry_items(p_items jsonb)
-returns integer
-language plpgsql security definer set search_path = public as $$
-declare
-  v_uid uuid := auth.uid();
-  v_item jsonb;
-  v_count integer := 0;
-begin
-  if v_uid is null then raise exception 'not authenticated'; end if;
-  if jsonb_typeof(p_items) <> 'array' then raise exception 'p_items must be a JSON array'; end if;
+    const { data: ingredientRows, error: ingredientsError } = await supabase
+      .from('ingredients')
+      .select('id, name, unit')
+      .order('name');
+    if (ingredientsError) throw ingredientsError;
 
-  for v_item in select * from jsonb_array_elements(p_items) loop
-    insert into public.pantry_log
-      (user_id, item_kind, ingredient_id, recipe_id, label, quantity, unit,
-       location, cost_pence, expiry_date, note)
-    values (
-      v_uid,
-      v_item->>'item_kind',
-      nullif(v_item->>'ingredient_id','')::uuid,
-      nullif(v_item->>'recipe_id','')::uuid,
-      v_item->>'label',
-      abs((v_item->>'quantity')::numeric),          -- adds are positive
-      v_item->>'unit',
-      v_item->>'location',
-      nullif(v_item->>'cost_pence','')::integer,
-      nullif(v_item->>'expiry_date','')::date,
-      v_item->>'note'
+    const { data: costRows, error: costsError } = await supabase
+      .from('recipe_costs')
+      .select('recipe_id, cost_gbp');
+    if (costsError) throw costsError;
+
+    const { data: allergenRows, error: allergensError } = await supabase
+      .from('recipe_allergens')
+      .select('recipe_id, contains');
+    if (allergensError) throw allergensError;
+
+    const { data: stockRows, error: stockError } = await supabase
+      .from('pantry_stock')
+      .select('user_id, item_kind, ingredient_id, recipe_id, location, quantity')
+      .eq('user_id', uid);
+    if (stockError) throw stockError;
+
+    const { data: lotRows, error: lotsError } = await supabase
+      .from('pantry_lots')
+      .select('id, user_id, item_kind, ingredient_id, recipe_id, label, quantity, unit, location, cost_pence, expiry_date, note, created_at')
+      .eq('user_id', uid);
+    if (lotsError) throw lotsError;
+
+    const monday = new Date(`${today}T00:00:00`);
+    monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+    const weekStart = isoDate(monday);
+
+    const { data: spends, error: spendError } = await supabase
+      .from('spend_log')
+      .select('amount_pence, spend_date')
+      .eq('user_id', uid)
+      .gte('spend_date', weekStart);
+    if (spendError) throw spendError;
+
+    const { data: intake, error: intakeError } = await supabase
+      .from('intake_log')
+      .select('id, intake_date, description, kcal, protein_g, carbs_g, fat_g, confidence')
+      .eq('user_id', uid)
+      .order('intake_date', { ascending: false })
+      .limit(8);
+    if (intakeError) throw intakeError;
+
+    setProfile(prof);
+    setCurrentWeight(current?.weight_kg ?? null);
+    setWeightRows(weights || []);
+    setPlanSlots(slots || []);
+    setRecipes(recipeRows || []);
+    setIngredients(ingredientRows || []);
+    setCostByRecipe(Object.fromEntries((costRows || []).map((row) => [row.recipe_id, row.cost_gbp])));
+    setAllergensByRecipe(Object.fromEntries((allergenRows || []).map((row) => [row.recipe_id, row.contains || []])));
+    setPantryStock(stockRows || []);
+    setPantryLots(lotRows || []);
+    setSpendRows(spends || []);
+    setIntakeRows(intake || []);
+  }
+
+  useEffect(() => {
+    let alive = true;
+
+    async function boot() {
+      try {
+        const supabase = getBrowserClient();
+        const { data: { session: found } } = await supabase.auth.getSession();
+        if (!alive) return;
+        if (!found) {
+          router.replace('/login');
+          return;
+        }
+        setSession(found);
+        await loadAll(found);
+      } catch (err) {
+        if (alive) setError(err.message);
+      } finally {
+        if (alive) setChecking(false);
+      }
+    }
+
+    boot();
+    return () => {
+      alive = false;
+    };
+  }, [router, today, weekEnd]);
+
+  async function refreshAfterAction() {
+    const { data: { session: live } } = await getBrowserClient().auth.getSession();
+    if (live) await loadAll(live);
+  }
+
+  async function runAction(message, action) {
+    if (!window.confirm(message)) return;
+    setBusy(true);
+    setError('');
+    const { error: actionError } = await action();
+    if (actionError) setError(actionError.message);
+    await refreshAfterAction();
+    setBusy(false);
+  }
+
+  function openChooser(slotDate, meal, currentRecipeId) {
+    const currentRecipe = currentRecipeId ? recipeById[currentRecipeId] : null;
+    const disliked = new Set(profile?.disliked_recipe_ids || []);
+    const userAllergens = new Set(profile?.allergens || []);
+    const targetKcal = currentRecipe?.kcal ?? Math.round((profile?.target_kcal ?? 600) / 3);
+
+    const options = recipes
+      .filter((recipe) => recipe.id !== currentRecipeId)
+      .filter((recipe) => !disliked.has(recipe.id))
+      .filter((recipe) => !(allergensByRecipe[recipe.id] || []).some((allergen) => userAllergens.has(allergen)))
+      .sort((a, b) => {
+        const sectionA = currentRecipe && a.section === currentRecipe.section ? 0 : 1;
+        const sectionB = currentRecipe && b.section === currentRecipe.section ? 0 : 1;
+        if (sectionA !== sectionB) return sectionA - sectionB;
+        return Math.abs((a.kcal ?? targetKcal) - targetKcal) - Math.abs((b.kcal ?? targetKcal) - targetKcal);
+      })
+      .slice(0, 3);
+
+    setChooser({ slotDate, meal, currentRecipeId, options });
+  }
+
+  async function chooseSwap(option, neverAgain) {
+    if (!chooser) return;
+    const label = dayLabel(chooser.slotDate);
+    await runAction(
+      `Swap ${label} ${chooser.meal} to ${option.name}${neverAgain ? ' and never show the old recipe again' : ''}?`,
+      () => swapMeal({ slotDate: chooser.slotDate, meal: chooser.meal, recipeId: option.id, neverAgain })
     );
-    v_count := v_count + 1;
-  end loop;
+    setChooser(null);
+  }
 
-  return v_count;
-end;
-$$;
+  async function submitEatingOut() {
+    if (!eatingForm?.label.trim()) {
+      setError('Eating out needs a label.');
+      return;
+    }
+    const label = dayLabel(eatingForm.slotDate);
+    await runAction(`Mark ${label} ${eatingForm.meal} as eating out?`, () => markEatingOut({
+      slotDate: eatingForm.slotDate,
+      meal: eatingForm.meal,
+      label: eatingForm.label.trim(),
+      estCostPence: poundsToPence(eatingForm.costPounds),
+      estKcal: optionalNumber(eatingForm.kcal),
+      estProteinG: optionalNumber(eatingForm.proteinG),
+      estCarbsG: optionalNumber(eatingForm.carbsG),
+      estFatG: optionalNumber(eatingForm.fatG),
+    }));
+    setEatingForm(null);
+  }
 
--- consume_pantry_item: append a NEGATIVE row (stock down). item identified the same
--- way an add is. Does not force stock non-negative (WARN-not-block ethos); the UI
--- surfaces negatives if they ever occur.
-create or replace function public.consume_pantry_item(
-  p_item_kind     text,
-  p_quantity      numeric,
-  p_location      text,
-  p_ingredient_id uuid default null,
-  p_recipe_id     uuid default null,
-  p_label         text default null,
-  p_unit          text default null,
-  p_note          text default null
-) returns public.pantry_log
-language plpgsql security definer set search_path = public as $$
-declare
-  v_uid uuid := auth.uid();
-  v_row public.pantry_log;
-begin
-  if v_uid is null then raise exception 'not authenticated'; end if;
-  if p_quantity is null or p_quantity <= 0 then
-    raise exception 'quantity to consume must be > 0';
-  end if;
+  async function editPortions(slot) {
+    const proposed = window.prompt('Portions for this slot', String(slot.portions ?? householdPortions));
+    if (proposed == null) return;
+    const portions = Number(proposed);
+    if (!Number.isFinite(portions) || portions <= 0) {
+      setError('Portions must be a positive number.');
+      return;
+    }
+    await runAction(`Set ${dayLabel(slot.slot_date)} ${slot.meal} to ${portions} portion(s)?`, () => setPortions({
+      slotDate: slot.slot_date,
+      meal: slot.meal,
+      portions,
+    }));
+  }
 
-  insert into public.pantry_log
-    (user_id, item_kind, ingredient_id, recipe_id, label, quantity, unit, location, note)
-  values
-    (v_uid, p_item_kind, p_ingredient_id, p_recipe_id, p_label,
-     -abs(p_quantity), p_unit, p_location, p_note)
-  returning * into v_row;
+  async function submitPantryAdd() {
+    const quantity = Number(pantryForm.quantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setError('Pantry quantity must be positive.');
+      return;
+    }
+    if (pantryForm.itemKind === 'ingredient' && !pantryForm.ingredientId) {
+      setError('Choose an ingredient, or use a label.');
+      return;
+    }
+    if (pantryForm.itemKind === 'cooked_portion' && !pantryForm.recipeId) {
+      setError('Choose a recipe, or use a label.');
+      return;
+    }
 
-  return v_row;
-end;
-$$;
+    await runAction('Add this pantry stock?', () => addPantryItems([{
+      itemKind: pantryForm.itemKind,
+      ingredientId: pantryForm.ingredientId || null,
+      recipeId: pantryForm.recipeId || null,
+      label: pantryForm.label.trim() || null,
+      quantity,
+      unit: pantryForm.unit.trim() || null,
+      location: pantryForm.location,
+      costPence: poundsToPence(pantryForm.costPounds),
+      expiryDate: pantryForm.expiryDate || null,
+    }]));
 
--- log_spend: append a spend row.
-create or replace function public.log_spend(
-  p_amount_pence integer,
-  p_category     text default 'grocery',
-  p_spend_date   date default current_date,
-  p_note         text default null
-) returns public.spend_log
-language plpgsql security definer set search_path = public as $$
-declare v_uid uuid := auth.uid(); v_row public.spend_log;
-begin
-  if v_uid is null then raise exception 'not authenticated'; end if;
-  insert into public.spend_log (user_id, amount_pence, category, spend_date, note)
-  values (v_uid, p_amount_pence, p_category, p_spend_date, p_note)
-  returning * into v_row;
-  return v_row;
-end;
-$$;
+    setPantryForm({ itemKind: 'ingredient', ingredientId: '', recipeId: '', label: '', quantity: '', unit: '', location: 'fridge', costPounds: '', expiryDate: '' });
+  }
 
--- log_off_plan_intake: append an intake row. Defaults confidence ESTIMATED so the
--- UI knows to ask the user to confirm (price/intake confidence taxonomy).
-create or replace function public.log_off_plan_intake(
-  p_description text,
-  p_kcal        integer default null,
-  p_protein_g   integer default null,
-  p_carbs_g     integer default null,
-  p_fat_g       integer default null,
-  p_confidence  text default 'ESTIMATED',
-  p_source      text default null,
-  p_intake_date date default current_date
-) returns public.intake_log
-language plpgsql security definer set search_path = public as $$
-declare v_uid uuid := auth.uid(); v_row public.intake_log;
-begin
-  if v_uid is null then raise exception 'not authenticated'; end if;
-  insert into public.intake_log
-    (user_id, description, kcal, protein_g, carbs_g, fat_g, confidence, source, intake_date)
-  values
-    (v_uid, p_description, p_kcal, p_protein_g, p_carbs_g, p_fat_g,
-     coalesce(p_confidence,'ESTIMATED'), p_source, p_intake_date)
-  returning * into v_row;
-  return v_row;
-end;
-$$;
+  async function consumeStock(row) {
+    const proposed = window.prompt(`Consume how much of ${stockName(row)}?`, '1');
+    if (proposed == null) return;
+    const quantity = Number(proposed);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setError('Consume quantity must be positive.');
+      return;
+    }
+    await runAction(`Consume ${quantity} from ${stockName(row)}?`, () => consumePantryItem({
+      itemKind: row.item_kind,
+      quantity,
+      location: row.location,
+      ingredientId: row.ingredient_id,
+      recipeId: row.recipe_id,
+    }));
+  }
 
--- log_weight: append a weigh-in to the EXISTING spine (weight_log -> weight_current).
-create or replace function public.log_weight(
-  p_weight_kg numeric,
-  p_note      text default null
-) returns void
-language plpgsql security definer set search_path = public as $$
-declare v_uid uuid := auth.uid();
-begin
-  if v_uid is null then raise exception 'not authenticated'; end if;
-  if p_weight_kg is null or p_weight_kg <= 0 then raise exception 'weight_kg must be > 0'; end if;
-  insert into public.weight_log (user_id, weight_kg, note)
-  values (v_uid, p_weight_kg, coalesce(p_note, 'Logged from dashboard'));
-end;
-$$;
+  async function submitIntake() {
+    if (!intakeForm.description.trim()) {
+      setError('Off-plan intake needs a description.');
+      return;
+    }
+    await runAction('Log this off-plan intake?', () => logOffPlanIntake({
+      description: intakeForm.description.trim(),
+      kcal: optionalNumber(intakeForm.kcal),
+      proteinG: optionalNumber(intakeForm.proteinG),
+      carbsG: optionalNumber(intakeForm.carbsG),
+      fatG: optionalNumber(intakeForm.fatG),
+    }));
+    setIntakeForm({ description: '', kcal: '', proteinG: '', carbsG: '', fatG: '' });
+  }
 
--- Execution grants: authenticated users only (anon cannot call actions).
-revoke all on function
-  public.swap_meal(date,text,uuid,boolean),
-  public.mark_eating_out(date,text,text,integer,integer,integer,integer,integer),
-  public.set_portions(date,text,numeric),
-  public.add_pantry_items(jsonb),
-  public.consume_pantry_item(text,numeric,text,uuid,uuid,text,text,text),
-  public.log_spend(integer,text,date,text),
-  public.log_off_plan_intake(text,integer,integer,integer,integer,text,text,date),
-  public.log_weight(numeric,text)
-from public;
+  async function submitSpend() {
+    const amountPence = poundsToPence(spendForm.amountPounds);
+    if (amountPence == null) {
+      setError('Spend needs a non-negative amount.');
+      return;
+    }
+    await runAction(`Log ${money(amountPence)} spend?`, () => logSpend({ amountPence, category: spendForm.category }));
+    setSpendForm({ amountPounds: '', category: 'grocery' });
+  }
 
-grant execute on function
-  public.swap_meal(date,text,uuid,boolean),
-  public.mark_eating_out(date,text,text,integer,integer,integer,integer,integer),
-  public.set_portions(date,text,numeric),
-  public.add_pantry_items(jsonb),
-  public.consume_pantry_item(text,numeric,text,uuid,uuid,text,text,text),
-  public.log_spend(integer,text,date,text),
-  public.log_off_plan_intake(text,integer,integer,integer,integer,text,text,date),
-  public.log_weight(numeric,text)
-to authenticated;
+  async function submitWeight() {
+    const weightKg = Number(weightInput);
+    if (!Number.isFinite(weightKg) || weightKg <= 0) {
+      setError('Weight must be a positive number.');
+      return;
+    }
+    await runAction(`Log ${formatWeight(weightKg, profile?.preferred_units)}?`, () => logWeight({ weightKg }));
+    setWeightInput('');
+  }
 
--- ============================================================================
--- END SECTION A. Expected: "Success. No rows returned." Report any error verbatim
--- before Section B/C is built — this file is the gate.
--- ============================================================================
+  function stockName(row) {
+    return ingredientById[row.ingredient_id]?.name || recipeById[row.recipe_id]?.name || row.label || 'Pantry item';
+  }
+
+  function expiryBadge(row) {
+    const matchingLots = pantryLots
+      .filter((lot) => lot.location === row.location)
+      .filter((lot) => (lot.ingredient_id && lot.ingredient_id === row.ingredient_id) || (lot.recipe_id && lot.recipe_id === row.recipe_id) || (!lot.ingredient_id && !lot.recipe_id))
+      .filter((lot) => lot.expiry_date)
+      .sort((a, b) => a.expiry_date.localeCompare(b.expiry_date));
+    const soonest = matchingLots[0]?.expiry_date;
+    if (!soonest) return null;
+
+    const warnBy = row.location === 'fridge' ? addDays(today, 2) : today;
+    if (soonest < today) return { text: 'expired', colour: '#b00020' };
+    if (soonest <= warnBy) return { text: 'use soon', colour: '#9a6b00' };
+    return null;
+  }
+
+  function trendSvg() {
+    if (weightRows.length === 0) return null;
+    if (weightRows.length === 1) {
+      return <p style={{ color: '#666' }}>One weigh-in logged — log again to see your trend.</p>;
+    }
+
+    const values = weightRows.map((row) => Number(row.weight_kg));
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const span = max - min || 1;
+    const points = values.map((value, index) => {
+      const x = (index / (values.length - 1)) * 180 + 10;
+      const y = 50 - ((value - min) / span) * 40;
+      return `${x},${y}`;
+    }).join(' ');
+
+    return (
+      <svg viewBox="0 0 200 60" width="100%" height="60" role="img" aria-label="Weight trend">
+        <polyline points={points} fill="none" stroke="#3b7d3b" strokeWidth="2" />
+      </svg>
+    );
+  }
+
+  if (checking || !session) return null;
+
+  const weekSpendPence = spendRows.reduce((sum, row) => sum + (row.amount_pence || 0), 0);
+
+  return (
+    <main style={{ maxWidth: 980, margin: '32px auto', padding: '0 16px', display: 'grid', gap: 24 }}>
+      <section style={{ border: '1px solid #ddd', borderRadius: 12, padding: 16 }}>
+        <h1 style={{ marginTop: 0 }}>HERB dashboard</h1>
+        {error ? <p role="alert" style={{ color: '#b00020' }}>{error}</p> : null}
+
+        {profile ? (
+          <>
+            <p>
+              Start {formatWeight(profile.start_weight_kg, profile.preferred_units)} → Now{' '}
+              {formatWeight(currentWeight, profile.preferred_units)} → Goal{' '}
+              {formatWeight(profile.goal_weight_kg, profile.preferred_units)}
+            </p>
+            {trendSvg()}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input
+                type="number"
+                step="0.1"
+                min="1"
+                placeholder={`Log weight (${profile.preferred_units === 'imperial' ? 'kg stored' : 'kg'})`}
+                value={weightInput}
+                onChange={(event) => setWeightInput(event.target.value)}
+              />
+              <button type="button" disabled={busy} onClick={submitWeight}>Log weight</button>
+            </div>
+            <p style={{ marginBottom: 0 }}>
+              Daily target: <b>{profile.target_kcal ?? '—'} kcal</b> · protein {profile.target_protein_g ?? '—'} g · carbs{' '}
+              {profile.target_carbs_g ?? '—'} g · fat {profile.target_fat_g ?? '—'} g ({profile.diet})
+            </p>
+          </>
+        ) : (
+          <p>No profile found yet. <Link href="/onboarding">Complete onboarding first</Link>.</p>
+        )}
+      </section>
+
+      <section style={{ border: '1px solid #ddd', borderRadius: 12, padding: 16 }}>
+        <h2 style={{ marginTop: 0 }}>Next 7 days</h2>
+        <div style={{ display: 'grid', gap: 12 }}>
+          {weekDays.map((slotDate) => (
+            <div key={slotDate} style={{ borderTop: '1px solid #eee', paddingTop: 12 }}>
+              <strong>{dayLabel(slotDate)}</strong>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginTop: 8 }}>
+                {MEALS.map((meal) => {
+                  const slot = slotByKey[slotKey(slotDate, meal)];
+                  const recipe = slot?.recipe_id ? recipeById[slot.recipe_id] : null;
+                  return (
+                    <div key={meal} style={{ border: '1px solid #eee', borderRadius: 8, padding: 8, minHeight: 92 }}>
+                      <div style={{ fontSize: 12, color: '#666', textTransform: 'capitalize' }}>{meal}</div>
+
+                      {slot?.eating_out ? (
