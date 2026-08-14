@@ -33,6 +33,23 @@ const DIET_OPTIONS = [
   { value: 'vegetarian_keto', label: 'Vegetarian keto', enabled: false, tag: 'coming soon' },
 ];
 
+// KIMI NOTE: allergens are the 14 UK declarables and are hard exclusions. Tokens are stored
+// verbatim; only two display labels need friendlier wording.
+const ALLERGEN_OPTIONS = [
+  'celery', 'gluten', 'crustaceans', 'eggs', 'fish', 'lupin', 'milk',
+  'molluscs', 'mustard', 'tree nuts', 'peanuts', 'sesame', 'soya', 'sulphites',
+];
+
+// KIMI NOTE: dislikes are soft exclusions. This curated list covers common HERB blockers;
+// the free-type box below merges into the same profiles.dislikes array.
+const DISLIKE_OPTIONS = [
+  'mushrooms', 'olives', 'coriander', 'blue cheese', 'goat’s cheese', 'anchovies',
+  'sardines', 'mackerel', 'liver', 'kidney', 'black pudding', 'brussels sprouts',
+  'cabbage', 'kale', 'beetroot', 'aubergine', 'courgette', 'fennel', 'gherkins', 'capers',
+  'horseradish', 'onions', 'garlic', 'very spicy / chilli', 'tomatoes', 'peppers',
+  'avocado', 'tofu', 'marmite / yeast extract', 'prawns',
+];
+
 function numberOrZero(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -40,6 +57,19 @@ function numberOrZero(value) {
 
 function roundToOne(value) {
   return Math.round(value * 10) / 10;
+}
+
+function titleCaseToken(token) {
+  return token
+    .split(' ')
+    .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : part))
+    .join(' ');
+}
+
+function allergenLabel(token) {
+  if (token === 'gluten') return 'Cereals containing gluten';
+  if (token === 'sulphites') return 'Sulphur dioxide / sulphites';
+  return titleCaseToken(token);
 }
 
 export default function OnboardingPage() {
@@ -64,6 +94,11 @@ export default function OnboardingPage() {
   const [avgDailyBurnKcal, setAvgDailyBurnKcal] = useState('');
   // KIMI NOTE: pace defaults to steady and is only meaningful/persisted for a loss goal.
   const [pace, setPace] = useState('steady');
+
+  // KIMI NOTE: allergens and curated dislikes are independent tick-lists; dislikesText is
+  // now only the "anything else" free-type box that merges into the final dislikes array.
+  const [allergens, setAllergens] = useState([]);
+  const [dislikeChoices, setDislikeChoices] = useState([]);
   const [dislikesText, setDislikesText] = useState('');
 
   // KIMI NOTE: units default to metric. Imperial inputs are kept as their raw ft/in and
@@ -141,7 +176,28 @@ export default function OnboardingPage() {
   // KIMI NOTE: blank burn stays null; a supplied burn is stored as an integer kcal value.
   const avgDailyBurn = avgDailyBurnKcal.trim() === '' ? null : Math.round(Number(avgDailyBurnKcal));
 
+  // KIMI NOTE: final dislikes = curated ticks + free-type entries split on commas, trimmed,
+  // blanks dropped, then deduped with Set. Case is preserved exactly as typed rather than
+  // normalised, because these are user-facing avoidance labels.
+  const freeTypedDislikes = dislikesText
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const dislikes = Array.from(new Set([...dislikeChoices, ...freeTypedDislikes]));
+
   if (checking || !session) return null;
+
+  function toggleAllergen(token) {
+    setAllergens((current) => (
+      current.includes(token) ? current.filter((item) => item !== token) : [...current, token]
+    ));
+  }
+
+  function toggleDislike(token) {
+    setDislikeChoices((current) => (
+      current.includes(token) ? current.filter((item) => item !== token) : [...current, token]
+    ));
+  }
 
   function validateIdentity() {
     if (!displayName.trim()) return 'Display name is required.';
@@ -207,10 +263,6 @@ export default function OnboardingPage() {
     }
 
     const uid = liveSession.user.id;
-    const dislikes = dislikesText
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean);
 
     const targets = calculateTargets({
       sex,
@@ -261,6 +313,7 @@ export default function OnboardingPage() {
       // previous loss pace cannot go stale after the user changes direction.
       pace: goal === 'lose weight' ? pace : null,
       diet: 'keto',
+      allergens,
       dislikes,
       ...targets,
       onboarded_at: new Date().toISOString(),
@@ -496,12 +549,53 @@ export default function OnboardingPage() {
 
       {step === 2 ? (
         <section style={{ display: 'grid', gap: 12 }}>
+          {/* KIMI NOTE: helper line states the product rule plainly — allergens are hard
+              exclusions everywhere; dislikes are avoided where possible but never treated as
+              a safety constraint. */}
+          <p style={{ margin: 0, color: '#666' }}>
+            Allergens are excluded from every suggestion; dislikes are avoided where possible.
+          </p>
+
+          <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'grid', gap: 8 }}>
+            <legend>Allergens</legend>
+            {/* KIMI NOTE: two-column checkbox grid keeps Step 2 compact while allowing the
+                page to scroll naturally on small screens. */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+              {ALLERGEN_OPTIONS.map((token) => (
+                <label key={token} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={allergens.includes(token)}
+                    onChange={() => toggleAllergen(token)}
+                  />
+                  {allergenLabel(token)}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'grid', gap: 8 }}>
+            <legend>Dislikes</legend>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+              {DISLIKE_OPTIONS.map((token) => (
+                <label key={token} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={dislikeChoices.includes(token)}
+                    onChange={() => toggleDislike(token)}
+                  />
+                  {token}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
           <label style={{ display: 'grid', gap: 6 }}>
-            Dislikes (optional, comma-separated)
+            Anything else you'd rather avoid (comma-separated)
             <input
               value={dislikesText}
               onChange={(event) => setDislikesText(event.target.value)}
-              placeholder="mushrooms, olives, coriander"
+              placeholder="e.g. raw onion, sweetcorn"
             />
           </label>
 
