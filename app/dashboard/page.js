@@ -277,26 +277,16 @@ export default function DashboardPage() {
   }
 
   function openChooser(slotDate, meal, currentRecipeId) {
-    const currentRecipe = currentRecipeId ? recipeById[currentRecipeId] : null;
     const disliked = new Set(profile?.disliked_recipe_ids || []);
     const userAllergens = new Set(profile?.allergens || []);
-    const targetKcal = currentRecipe?.kcal ?? Math.round((profile?.target_kcal ?? 600) / 3);
 
     const safe = recipes
       .filter((recipe) => recipe.id !== currentRecipeId)
       .filter((recipe) => !disliked.has(recipe.id))
       .filter((recipe) => !(allergensByRecipe[recipe.id] || []).some((allergen) => userAllergens.has(allergen)));
 
-    // Planning an empty slot: show every safe recipe, A–Z.
-    // Swapping an existing meal: show the 3 closest matches to what was there.
-    const options = currentRecipe
-      ? [...safe].sort((a, b) => {
-          const sectionA = a.section === currentRecipe.section ? 0 : 1;
-          const sectionB = b.section === currentRecipe.section ? 0 : 1;
-          if (sectionA !== sectionB) return sectionA - sectionB;
-          return Math.abs((a.kcal ?? targetKcal) - targetKcal) - Math.abs((b.kcal ?? targetKcal) - targetKcal);
-        }).slice(0, 3)
-      : [...safe].sort((a, b) => a.name.localeCompare(b.name));
+    // Both planning and swapping show every safe recipe, A–Z.
+    const options = [...safe].sort((a, b) => a.name.localeCompare(b.name));
 
     setChooser({ slotDate, meal, currentRecipeId, options });
   }
