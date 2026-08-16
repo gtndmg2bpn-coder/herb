@@ -105,6 +105,7 @@ export default function DashboardPage() {
     location: 'fridge',
     costPounds: '',
     expiryDate: '',
+    boughtDate: '',
   });
   const [intakeForm, setIntakeForm] = useState({ description: '', kcal: '', proteinG: '', carbsG: '', fatG: '', costPounds: '' });
   const [spendForm, setSpendForm] = useState({ amountPounds: '', category: 'grocery' });
@@ -360,9 +361,10 @@ export default function DashboardPage() {
       location: pantryForm.location,
       costPence: poundsToPence(pantryForm.costPounds),
       expiryDate: pantryForm.expiryDate || null,
+      boughtDate: pantryForm.boughtDate || null,
     }]));
 
-    setPantryForm({ itemKind: 'ingredient', ingredientId: '', recipeId: '', label: '', quantity: '', unit: '', location: 'fridge', costPounds: '', expiryDate: '' });
+    setPantryForm({ itemKind: 'ingredient', ingredientId: '', recipeId: '', label: '', quantity: '', unit: '', location: 'fridge', costPounds: '', expiryDate: '', boughtDate: '' });
   }
 
   async function consumeStock(row) {
@@ -592,6 +594,9 @@ export default function DashboardPage() {
             </div>
           ))}
         </div>
+        <div style={{ marginTop: 12 }}>
+          <Link href="/shopping">Build shopping list &rarr;</Link>
+        </div>
       </section>
 
       {chooser ? (
@@ -675,7 +680,12 @@ export default function DashboardPage() {
               {LOCATIONS.map((location) => <option key={location} value={location}>{location}</option>)}
             </select>
             <input placeholder="Cost (£)" value={pantryForm.costPounds} onChange={(event) => setPantryForm({ ...pantryForm, costPounds: event.target.value })} />
-            <input type="date" value={pantryForm.expiryDate} onChange={(event) => setPantryForm({ ...pantryForm, expiryDate: event.target.value })} />
+            <label style={{ fontSize: 12, color: '#666' }}>Bought/cooked
+              <input type="date" value={pantryForm.boughtDate} onChange={(event) => setPantryForm({ ...pantryForm, boughtDate: event.target.value })} />
+            </label>
+            <label style={{ fontSize: 12, color: '#666' }}>Expiry (auto if blank)
+              <input type="date" value={pantryForm.expiryDate} onChange={(event) => setPantryForm({ ...pantryForm, expiryDate: event.target.value })} />
+            </label>
           </div>
           <button type="button" disabled={busy} onClick={submitPantryAdd}>Add pantry item</button>
         </div>
@@ -716,6 +726,7 @@ export default function DashboardPage() {
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
         <Link href="/">Browse recipes</Link>
+        <Link href="/shopping">Shopping list</Link>
       </div>
     </main>
   );
