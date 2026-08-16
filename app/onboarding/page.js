@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getBrowserClient } from '../../lib/supabaseBrowser';
 import { calculateTargets } from '../../lib/targets';
+import { logWeight } from '../../lib/actions';
 
 const SEX_OPTIONS = ['male', 'female', 'other'];
 const ACTIVITY_OPTIONS = ['sedentary', 'light', 'moderate', 'active', 'very_active'];
@@ -280,9 +281,12 @@ export default function OnboardingPage() {
     // onboarded_at is set LAST, inside the profiles upsert, only after that dependent row
     // exists. Client-side supabase-js cannot wrap both writes in one transaction, so if
     // the weigh-in fails the gate stays closed and the wizard is safely re-runnable.
-    const { error: weightError } = await supabase.from('weight_log').insert({
-      user_id: uid,
-      weight_kg: parsed.startWeightKg,
+    // Routed through the log_weight RPC — the sole write path to the weight ledger.
+    // The RPC derives user_id from auth.uid() internally and preserves the note, so
+    // the 'Starting weight (onboarding)' provenance is kept. Order is still load-bearing:
+    // the weigh-in lands FIRST and gates the profiles upsert below.
+    const { error: weightError } = await logWeight({
+      weightKg: parsed.startWeightKg,
       note: 'Starting weight (onboarding)',
     });
 
