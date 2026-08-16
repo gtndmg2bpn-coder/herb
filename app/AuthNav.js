@@ -57,6 +57,7 @@ export default function AuthNav() {
         <>
           <span>Hi, {name}</span>
           <Link href="/dashboard">Dashboard</Link>
+          <Link href="/shopping">Shopping list</Link>
           <button type="button" onClick={signOut}>Log out</button>
         </>
       ) : (
