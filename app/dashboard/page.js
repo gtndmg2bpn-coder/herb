@@ -13,6 +13,7 @@ import {
   consumePantryItem,
   movePantryStock,
   eatPortions,
+  binStock,
   logSpend,
   logOffPlanIntake,
   logWeight,
@@ -96,6 +97,7 @@ export default function DashboardPage() {
   const [spendRows, setSpendRows] = useState([]);
   const [intakeRows, setIntakeRows] = useState([]);
   const [weekIntakeRows, setWeekIntakeRows] = useState([]);
+  const [wasteRows, setWasteRows] = useState([]);
 
   const [weightInput, setWeightInput] = useState('');
   const [weightStones, setWeightStones] = useState('');
@@ -238,6 +240,15 @@ export default function DashboardPage() {
       .gte('intake_date', weekStart);
     if (weekIntakeError) throw weekIntakeError;
 
+    // Whole-week waste, for the "cost of binning" total and the Log bin list.
+    const { data: waste, error: wasteError } = await supabase
+      .from('waste_log')
+      .select('id, wasted_date, item_kind, ingredient_id, recipe_id, label, quantity, unit, cost_pence')
+      .eq('user_id', uid)
+      .gte('wasted_date', weekStart)
+      .order('wasted_date', { ascending: false });
+    if (wasteError) throw wasteError;
+
     setProfile(prof);
     setCurrentWeight(current?.weight_kg ?? null);
     setWeightRows(weights || []);
@@ -252,6 +263,7 @@ export default function DashboardPage() {
     setSpendRows(spends || []);
     setIntakeRows(intake || []);
     setWeekIntakeRows(weekIntake || []);
+    setWasteRows(waste || []);
   }
   useEffect(() => {
     let alive = true;
@@ -450,15 +462,16 @@ export default function DashboardPage() {
     setPantryForm({ itemKind: 'ingredient', ingredientId: '', recipeId: '', label: '', quantity: '', unit: '', location: 'fridge', costPounds: '', expiryDate: '', boughtDate: '' });
   }
 
-  async function consumeStock(row) {
-    const proposed = window.prompt(`Consume how much of ${stockName(row)}?`, '1');
+  // Binning stock: draws it down and logs the waste cost.
+  async function binStockRow(row) {
+    const proposed = window.prompt(`Bin how much of ${stockName(row)}?`, String(row.quantity));
     if (proposed == null) return;
     const quantity = Number(proposed);
     if (!Number.isFinite(quantity) || quantity <= 0) {
-      setError('Consume quantity must be positive.');
+      setError('Bin quantity must be positive.');
       return;
     }
-    await runAction(`Consume ${quantity} from ${stockName(row)}?`, () => consumePantryItem({
+    await runAction(`Bin ${quantity} of ${stockName(row)}? This logs the waste cost.`, () => binStock({
       itemKind: row.item_kind,
       quantity,
       location: row.location,
@@ -666,6 +679,8 @@ export default function DashboardPage() {
   const eatenPence = weekIntakeRows
     .filter((row) => row.source === 'planned')
     .reduce((sum, row) => sum + (row.cost_pence || 0), 0);
+  // The cost of binning: food you paid for but threw away.
+  const binnedPence = wasteRows.reduce((sum, row) => sum + (row.cost_pence || 0), 0);
 
   return (
     <main style={{ maxWidth: 980, margin: '32px auto', padding: '0 16px', display: 'grid', gap: 24 }}>
@@ -906,7 +921,7 @@ export default function DashboardPage() {
                       {row.location === 'fridge' ? 'To freezer' : 'To fridge'}
                     </button>
                   ) : null}
-                  <button type="button" disabled={busy} onClick={() => consumeStock(row)}>Consume</button>
+                  <button type="button" disabled={busy} onClick={() => binStockRow(row)}>Bin</button>
                 </div>
               );
             }) : <p style={{ color: '#666', margin: '4px 0' }}>No stock.</p>}
@@ -968,13 +983,23 @@ export default function DashboardPage() {
           <input placeholder="Qty" style={{ width: 72 }} value={intakeForm.pantryQuantity} onChange={(event) => setIntakeForm({ ...intakeForm, pantryQuantity: event.target.value })} />
         </div>
         <button type="button" disabled={busy} onClick={submitIntake}>Log intake</button>
-        {intakeRows.map((row) => (
+
+        <h3 style={{ marginBottom: 0 }}>Log eat</h3>
+        {intakeRows.length ? intakeRows.map((row) => (
           <p key={row.id} style={{ margin: 0, color: '#666' }}>
             {row.intake_date}: {row.description} — {row.kcal ?? '—'} kcal
             {row.cost_pence != null ? ` · ${money(row.cost_pence)}` : ''}
             {row.confidence === 'ESTIMATED' ? ' (estimated — confirm?)' : ''}
           </p>
-        ))}
+        )) : <p style={{ margin: 0, color: '#666' }}>Nothing eaten logged yet.</p>}
+
+        <h3 style={{ marginBottom: 0 }}>Log bin</h3>
+        {wasteRows.length ? wasteRows.map((row) => (
+          <p key={row.id} style={{ margin: 0, color: '#666' }}>
+            {row.wasted_date}: {row.label || 'Binned item'} — {row.quantity}{row.unit ? ` ${row.unit}` : ''}
+            {row.cost_pence != null ? ` · ${money(row.cost_pence)} wasted` : ''}
+          </p>
+        )) : <p style={{ margin: 0, color: '#666' }}>Nothing binned this week. Nice.</p>}
 
         <h2>Log spend</h2>
         <p style={{ margin: 0 }}>This week (cash out): <b>{money(weekTotalPence)}</b></p>
@@ -984,6 +1009,10 @@ export default function DashboardPage() {
         <p style={{ margin: 0 }}>
           This week (eaten): <b>{money(eatenPence)}</b>{' '}
           <span style={{ fontSize: 12, color: '#666' }}>— the cost of what you actually consumed, portion by portion.</span>
+        </p>
+        <p style={{ margin: 0 }}>
+          This week (binned): <b>{money(binnedPence)}</b>{' '}
+          <span style={{ fontSize: 12, color: '#666' }}>— food you paid for but threw away.</span>
         </p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <input placeholder="Amount (£)" value={spendForm.amountPounds} onChange={(event) => setSpendForm({ ...spendForm, amountPounds: event.target.value })} />
