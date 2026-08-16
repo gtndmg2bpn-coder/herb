@@ -101,9 +101,14 @@ export default async function RecipeDetail({ params }) {
 
   return (
     <main className="wrap">
-      <Link href="/" className="back">
-        &larr; All recipes
-      </Link>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <Link href="/" className="back">
+          &larr; All recipes
+        </Link>
+        <Link href="/dashboard" className="back">
+          Dashboard &rarr;
+        </Link>
+      </div>
 
       {recipe.image_id && (
         <img
