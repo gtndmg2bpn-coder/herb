@@ -450,8 +450,13 @@ export default function DashboardPage() {
   }, [profile]);
 
   async function refreshAfterAction() {
-    const { data: { session: live } } = await getBrowserClient().auth.getSession();
-    if (live) await loadAll(live);
+    try {
+      const { data: { session: live } } = await getBrowserClient().auth.getSession();
+      if (live) await loadAll(live);
+    } catch (err) {
+      console.error('refreshAfterAction failed:', err);
+      setError('Could not refresh after the last action — reload if the screen looks stale.');
+    }
   }
 
   async function runAction(message, action) {
