@@ -23,8 +23,30 @@ import {
 const MEALS = ['breakfast', 'lunch', 'dinner'];
 const LOCATIONS = ['fridge', 'freezer', 'cupboard'];
 const SPEND_CATEGORIES = ['grocery', 'eating_out', 'other'];
-// The 14 UK major allergens
-const ALLERGENS = ['celery', 'gluten', 'crustaceans', 'eggs', 'fish', 'lupin', 'milk', 'molluscs', 'mustard', 'nuts', 'peanuts', 'sesame', 'soy', 'sulphites'];
+// The 14 UK major allergens.
+// These codes are written to profiles.allergens and matched, verbatim, against
+// recipe_allergens.contains — so they MUST equal the data's canonical codes.
+// tree_nuts / soybeans are the canonical forms (were shipped as nuts / soy,
+// which matched nothing and silently filtered nothing).
+const ALLERGENS = ['celery', 'gluten', 'crustaceans', 'eggs', 'fish', 'lupin', 'milk', 'molluscs', 'mustard', 'tree_nuts', 'peanuts', 'sesame', 'soybeans', 'sulphites'];
+
+// Readable labels for display only — never written to the DB, never matched.
+const ALLERGEN_LABELS = {
+  celery: 'Celery',
+  gluten: 'Gluten',
+  crustaceans: 'Crustaceans',
+  eggs: 'Eggs',
+  fish: 'Fish',
+  lupin: 'Lupin',
+  milk: 'Milk',
+  molluscs: 'Molluscs',
+  mustard: 'Mustard',
+  tree_nuts: 'Tree nuts',
+  peanuts: 'Peanuts',
+  sesame: 'Sesame',
+  soybeans: 'Soya',
+  sulphites: 'Sulphites',
+};
 
 // Editorial design tokens
 const INK = '#2A2932';
@@ -1248,7 +1270,7 @@ export default function DashboardPage() {
                     fontFamily: 'inherit',
                   }}
                 >
-                  {allergen}
+                  {ALLERGEN_LABELS[allergen] ?? allergen}
                 </button>
               );
             })}
