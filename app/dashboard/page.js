@@ -11,6 +11,8 @@ import {
   setPortions,
   addPantryItems,
   consumePantryItem,
+  movePantryStock,
+  eatPortions,
   logSpend,
   logOffPlanIntake,
   logWeight,
@@ -93,6 +95,7 @@ export default function DashboardPage() {
   const [pantryLots, setPantryLots] = useState([]);
   const [spendRows, setSpendRows] = useState([]);
   const [intakeRows, setIntakeRows] = useState([]);
+  const [weekIntakeRows, setWeekIntakeRows] = useState([]);
 
   const [weightInput, setWeightInput] = useState('');
   const [weightStones, setWeightStones] = useState('');
@@ -202,7 +205,7 @@ export default function DashboardPage() {
 
     const { data: stockRows, error: stockError } = await supabase
       .from('pantry_stock')
-      .select('user_id, item_kind, ingredient_id, recipe_id, location, quantity')
+      .select('user_id, item_kind, ingredient_id, recipe_id, label, location, quantity')
       .eq('user_id', uid);
     if (stockError) throw stockError;
 
@@ -221,11 +224,19 @@ export default function DashboardPage() {
 
     const { data: intake, error: intakeError } = await supabase
       .from('intake_log')
-      .select('id, intake_date, description, kcal, protein_g, carbs_g, fat_g, confidence, cost_pence')
+      .select('id, intake_date, description, kcal, protein_g, carbs_g, fat_g, confidence, source, cost_pence')
       .eq('user_id', uid)
       .order('intake_date', { ascending: false })
       .limit(8);
     if (intakeError) throw intakeError;
+
+    // Whole-week intake, for the "cost of eating" total.
+    const { data: weekIntake, error: weekIntakeError } = await supabase
+      .from('intake_log')
+      .select('cost_pence, source, intake_date')
+      .eq('user_id', uid)
+      .gte('intake_date', weekStart);
+    if (weekIntakeError) throw weekIntakeError;
 
     setProfile(prof);
     setCurrentWeight(current?.weight_kg ?? null);
@@ -240,6 +251,7 @@ export default function DashboardPage() {
     setPantryLots(lotRows || []);
     setSpendRows(spends || []);
     setIntakeRows(intake || []);
+    setWeekIntakeRows(weekIntake || []);
   }
   useEffect(() => {
     let alive = true;
@@ -279,6 +291,13 @@ export default function DashboardPage() {
       eatingFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }, [eatingForm]);
+
+  // If the chooser is open when allergens/dislikes change, rebuild its options
+  // with the new filters so the list is never stale.
+  useEffect(() => {
+    if (chooser) openChooser(chooser.slotDate, chooser.meal, chooser.currentRecipeId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile]);
 
   async function refreshAfterAction() {
     const { data: { session: live } } = await getBrowserClient().auth.getSession();
@@ -448,9 +467,68 @@ export default function DashboardPage() {
     }));
   }
 
+  // Fridge <-> freezer. The destination lot gets a fresh rule-derived expiry
+  // (cooked portions: 3 days fridge, 30 days freezer).
+  async function moveStock(row) {
+    const to = row.location === 'fridge' ? 'freezer' : 'fridge';
+    const proposed = window.prompt(`Move how much of ${stockName(row)} to the ${to}?`, String(row.quantity));
+    if (proposed == null) return;
+    const quantity = Number(proposed);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setError('Move quantity must be positive.');
+      return;
+    }
+    await runAction(`Move ${quantity} of ${stockName(row)} to the ${to}?`, () => movePantryStock({
+      itemKind: row.item_kind,
+      quantity,
+      fromLocation: row.location,
+      toLocation: to,
+      ingredientId: row.ingredient_id,
+      recipeId: row.recipe_id,
+      label: row.label ?? null,
+    }));
+  }
+
+  // Eating a planned (cooked) slot — the cost of eating lands here.
+  async function eatSlot(slot) {
+    const recipe = recipeById[slot.recipe_id];
+    const proposed = window.prompt(`Eat how many portions of ${recipe?.name ?? 'this meal'}?`, '1');
+    if (proposed == null) return;
+    const portions = Number(proposed);
+    if (!Number.isFinite(portions) || portions <= 0) {
+      setError('Portions must be a positive number.');
+      return;
+    }
+    await runAction(`Log ${portions} portion(s) of ${recipe?.name ?? 'this meal'} as eaten?`, async () => {
+      const result = await eatPortions({ recipeId: slot.recipe_id, portions });
+      if (!result.error && Number(result.data?.not_in_stock) > 0) {
+        setError(`Logged — but only ${result.data.from_stock} portion(s) were in stock, so ${result.data.not_in_stock} came straight off the hob.`);
+      }
+      return result;
+    });
+  }
+
+  // Eating from a cooked-portion stock row (e.g. leftovers later in the week).
+  async function eatStock(row) {
+    const proposed = window.prompt(`Eat how many portions of ${stockName(row)}?`, '1');
+    if (proposed == null) return;
+    const portions = Number(proposed);
+    if (!Number.isFinite(portions) || portions <= 0) {
+      setError('Portions must be a positive number.');
+      return;
+    }
+    await runAction(`Log ${portions} portion(s) of ${stockName(row)} as eaten?`, async () => {
+      const result = await eatPortions({ recipeId: row.recipe_id, portions });
+      if (!result.error && Number(result.data?.not_in_stock) > 0) {
+        setError(`Logged — but only ${result.data.from_stock} portion(s) were in stock.`);
+      }
+      return result;
+    });
+  }
+
   async function cookSlot(slot) {
     await runAction(
-      `Mark ${dayLabel(slot.slot_date)} ${slot.meal} as cooked? This takes the ingredients from your pantry.`,
+      `Mark ${dayLabel(slot.slot_date)} ${slot.meal} as cooked? This takes the ingredients from your pantry and banks the portions in the fridge.`,
       async () => {
         const result = await cookMeal({ slotDate: slot.slot_date, meal: slot.meal });
         if (!result.error && result.data?.shortfalls?.length) {
@@ -531,6 +609,12 @@ export default function DashboardPage() {
     return ingredientById[row.ingredient_id]?.name || recipeById[row.recipe_id]?.name || row.label || 'Pantry item';
   }
 
+  function stockQuantity(row) {
+    return row.item_kind === 'cooked_portion'
+      ? `${row.quantity} portion${Number(row.quantity) === 1 ? '' : 's'}`
+      : `${row.quantity}`;
+  }
+
   function expiryBadge(row) {
     const matchingLots = pantryLots
       .filter((lot) => lot.location === row.location)
@@ -575,10 +659,14 @@ export default function DashboardPage() {
   const eatingOutPence = planSlots
     .filter((slot) => slot.eating_out)
     .reduce((sum, slot) => sum + (slot.est_cost_pence || 0), 0);
-  const offPlanPence = intakeRows
-    .filter((row) => row.intake_date >= weekStart)
+  const offPlanPence = weekIntakeRows
+    .filter((row) => row.source !== 'planned')
     .reduce((sum, row) => sum + (row.cost_pence || 0), 0);
   const weekTotalPence = weekSpendPence + eatingOutPence + offPlanPence;
+  // The cost of eating: what you actually consumed from planned meals.
+  const eatenPence = weekIntakeRows
+    .filter((row) => row.source === 'planned')
+    .reduce((sum, row) => sum + (row.cost_pence || 0), 0);
 
   return (
     <main style={{ maxWidth: 980, margin: '32px auto', padding: '0 16px', display: 'grid', gap: 24 }}>
@@ -713,7 +801,12 @@ export default function DashboardPage() {
                         </div>
                       ) : recipe ? (
                         <div>
-                          <Link href={`/recipe/${recipe.id}`}>{recipe.name}</Link>
+                          <Link href={`/recipe/${recipe.id}`} style={{ display: 'block', fontWeight: 600 }}>
+                            {recipe.name}
+                            <span style={{ display: 'block', fontSize: 12, fontWeight: 'normal', color: '#666' }}>
+                              tap for photo, ingredients &amp; method →
+                            </span>
+                          </Link>
                           <div style={{ fontSize: 12, color: '#666' }}>
                             {recipe.kcal ?? '—'} kcal · {money(Math.round((costByRecipe[recipe.id] ?? 0) * 100 * (slot.portions ?? householdPortions)))}
                           </div>
@@ -721,7 +814,10 @@ export default function DashboardPage() {
                             <button type="button" disabled={busy} onClick={() => openChooser(slotDate, meal, recipe.id)}>Swap</button>
                             <button type="button" disabled={busy} onClick={() => editPortions(slot)}>Portions: {slot.portions ?? householdPortions}</button>
                             {slot.cooked_at ? (
-                              <span style={{ fontSize: 12, color: '#3b7d3b', alignSelf: 'center' }}>Cooked ✓</span>
+                              <>
+                                <span style={{ fontSize: 12, color: '#3b7d3b', alignSelf: 'center' }}>Cooked ✓</span>
+                                <button type="button" disabled={busy} onClick={() => eatSlot(slot)}>Eaten</button>
+                              </>
                             ) : (
                               <button type="button" disabled={busy} onClick={() => cookSlot(slot)}>Cooked</button>
                             )}
@@ -800,9 +896,17 @@ export default function DashboardPage() {
             {pantryStock.filter((row) => row.location === location).length ? pantryStock.filter((row) => row.location === location).map((row) => {
               const badge = expiryBadge(row);
               return (
-                <div key={`${row.location}|${row.ingredient_id}|${row.recipe_id}`} style={{ display: 'flex', gap: 8, alignItems: 'center', borderTop: '1px solid #eee', padding: '6px 0' }}>
-                  <span style={{ flex: 1 }}>{stockName(row)} — {row.quantity}</span>
+                <div key={`${row.location}|${row.item_kind}|${row.ingredient_id}|${row.recipe_id}`} style={{ display: 'flex', gap: 8, alignItems: 'center', borderTop: '1px solid #eee', padding: '6px 0' }}>
+                  <span style={{ flex: 1 }}>{stockName(row)} — {stockQuantity(row)}</span>
                   {badge ? <span style={{ color: badge.colour, fontSize: 12 }}>{badge.text}</span> : null}
+                  {row.item_kind === 'cooked_portion' && row.recipe_id ? (
+                    <button type="button" disabled={busy} onClick={() => eatStock(row)}>Eat</button>
+                  ) : null}
+                  {row.location !== 'cupboard' ? (
+                    <button type="button" disabled={busy} onClick={() => moveStock(row)}>
+                      {row.location === 'fridge' ? 'To freezer' : 'To fridge'}
+                    </button>
+                  ) : null}
                   <button type="button" disabled={busy} onClick={() => consumeStock(row)}>Consume</button>
                 </div>
               );
@@ -877,6 +981,10 @@ export default function DashboardPage() {
         <p style={{ margin: 0 }}>This week (cash out): <b>{money(weekTotalPence)}</b></p>
         <p style={{ margin: 0, fontSize: 12, color: '#666' }}>
           Logged {money(weekSpendPence)} · eating out (est.) {money(eatingOutPence)} · off-plan {money(offPlanPence)}
+        </p>
+        <p style={{ margin: 0 }}>
+          This week (eaten): <b>{money(eatenPence)}</b>{' '}
+          <span style={{ fontSize: 12, color: '#666' }}>— the cost of what you actually consumed, portion by portion.</span>
         </p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <input placeholder="Amount (£)" value={spendForm.amountPounds} onChange={(event) => setSpendForm({ ...spendForm, amountPounds: event.target.value })} />
