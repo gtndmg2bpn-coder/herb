@@ -91,6 +91,8 @@ export default function DashboardPage() {
   const [intakeRows, setIntakeRows] = useState([]);
 
   const [weightInput, setWeightInput] = useState('');
+  const [weightStones, setWeightStones] = useState('');
+  const [weightPounds, setWeightPounds] = useState('');
   const [chooser, setChooser] = useState(null);
   const [eatingForm, setEatingForm] = useState(null);
   const [pantryForm, setPantryForm] = useState({
@@ -397,13 +399,26 @@ export default function DashboardPage() {
   }
 
   async function submitWeight() {
-    const weightKg = Number(weightInput);
-    if (!Number.isFinite(weightKg) || weightKg <= 0) {
-      setError('Weight must be a positive number.');
-      return;
+    let weightKg;
+    if (profile?.preferred_units === 'imperial') {
+      const stones = Number(weightStones || 0);
+      const pounds = Number(weightPounds || 0);
+      if (!Number.isFinite(stones) || !Number.isFinite(pounds) || stones < 0 || pounds < 0 || pounds >= 14 || (stones === 0 && pounds === 0)) {
+        setError('Enter stones and pounds (pounds under 14).');
+        return;
+      }
+      weightKg = Math.round((stones * 14 + pounds) * 0.45359237 * 100) / 100;
+    } else {
+      weightKg = Number(weightInput);
+      if (!Number.isFinite(weightKg) || weightKg <= 0) {
+        setError('Weight must be a positive number.');
+        return;
+      }
     }
     await runAction(`Log ${formatWeight(weightKg, profile?.preferred_units)}?`, () => logWeight({ weightKg }));
     setWeightInput('');
+    setWeightStones('');
+    setWeightPounds('');
   }
 
   function stockName(row) {
@@ -467,14 +482,39 @@ export default function DashboardPage() {
             </p>
             {trendSvg()}
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <input
-                type="number"
-                step="0.1"
-                min="1"
-                placeholder={`Log weight (${profile.preferred_units === 'imperial' ? 'kg stored' : 'kg'})`}
-                value={weightInput}
-                onChange={(event) => setWeightInput(event.target.value)}
-              />
+              {profile.preferred_units === 'imperial' ? (
+                <>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="st"
+                    value={weightStones}
+                    onChange={(event) => setWeightStones(event.target.value)}
+                    style={{ width: 64 }}
+                  />
+                  <span>st</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="13.9"
+                    placeholder="lb"
+                    value={weightPounds}
+                    onChange={(event) => setWeightPounds(event.target.value)}
+                    style={{ width: 64 }}
+                  />
+                  <span>lb</span>
+                </>
+              ) : (
+                <input
+                  type="number"
+                  step="0.1"
+                  min="1"
+                  placeholder="Log weight (kg)"
+                  value={weightInput}
+                  onChange={(event) => setWeightInput(event.target.value)}
+                />
+              )}
               <button type="button" disabled={busy} onClick={submitWeight}>Log weight</button>
             </div>
             <p style={{ marginBottom: 0 }}>
