@@ -8,17 +8,11 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getBrowserClient } from '../../lib/supabaseBrowser';
-import { generateShoppingList, logShoppingTrip } from '../../lib/actions';
+import { generateShoppingList, logShoppingTrip, confirmTripPrices } from '../../lib/actions';
 
 function isoDate(date) {
   const d = date ?? new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function addDays(iso, days) {
-  const date = new Date(`${iso}T00:00:00`);
-  date.setDate(date.getDate() + days);
-  return isoDate(date);
 }
 
 function money(pence) {
@@ -43,7 +37,7 @@ export default function ShoppingPage() {
   const [step, setStep] = useState('questions'); // questions | list | log | done
   const [weekStart, setWeekStart] = useState(isoDate());
   const [mainDate, setMainDate] = useState(isoDate());
-  const [topupDate, setTopupDate] = useState(addDays(isoDate(), 3));
+  const [cadence, setCadence] = useState('3');
 
   const [trips, setTrips] = useState([]);
   const [items, setItems] = useState([]);
@@ -116,7 +110,7 @@ export default function ShoppingPage() {
     const { error: genError } = await generateShoppingList({
       weekStart,
       mainTripDate: mainDate,
-      topupTripDate: topupDate,
+      topupCadenceDays: Number(cadence) || 3,
     });
     if (genError) setError(genError.message);
     try {
@@ -136,6 +130,20 @@ export default function ShoppingPage() {
     setTicks(initial);
     setActualTotal('');
     setStep('log');
+  }
+
+  async function onConfirmPrices(trip) {
+    if (!window.confirm('Confirm the estimated prices for this trip are about right?')) return;
+    setBusy(true);
+    setError('');
+    const { error: confirmError } = await confirmTripPrices({ tripId: trip.id });
+    if (confirmError) setError(confirmError.message);
+    try {
+      await loadTrips();
+    } catch (err) {
+      setError(err.message);
+    }
+    setBusy(false);
   }
 
   async function onLogTrip(trip) {
@@ -186,8 +194,8 @@ export default function ShoppingPage() {
               <input type="date" value={mainDate} onChange={(event) => setMainDate(event.target.value)} />
             </label>
             <label style={{ display: 'grid', gap: 4 }}>
-              When can you do a midweek top-up? (fish, salad and other short-life food)
-              <input type="date" value={topupDate} onChange={(event) => setTopupDate(event.target.value)} />
+              Top up every how many days? (fish, salad and other short-life food)
+              <input type="number" min="1" max="7" value={cadence} onChange={(event) => setCadence(event.target.value)} />
             </label>
             <button type="button" disabled={busy} onClick={onGenerate}>Build my list</button>
           </div>
@@ -209,7 +217,10 @@ export default function ShoppingPage() {
                 {trips.map((trip) => (
                   <div key={trip.id} style={{ borderTop: '1px solid #eee', paddingTop: 12 }}>
                     <h2 style={{ margin: '0 0 8px' }}>
-                      {trip.kind === 'main' ? 'Main shop' : 'Midweek top-up'} — {trip.trip_date}
+                      {trip.kind === 'main' ? 'Main shop' : 'Midweek top-up'} — {trip.trip_date}{' '}
+                      <span style={{ fontSize: 12, fontWeight: 'normal', color: trip.price_status === 'ESTIMATED' ? '#9a6b00' : '#3b7d3b' }}>
+                        {trip.price_status === 'ESTIMATED' ? 'estimated prices' : 'prices confirmed'}
+                      </span>
                     </h2>
                     {itemsFor(trip.id).map((item) => (
                       <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '4px 0', borderTop: '1px solid #f4f4f4' }}>
@@ -220,6 +231,9 @@ export default function ShoppingPage() {
                       </div>
                     ))}
                     <p style={{ textAlign: 'right', margin: '8px 0 0' }}>Est. total: <b>{money(tripTotal(trip.id))}</b></p>
+                    {trip.price_status === 'ESTIMATED' ? (
+                      <button type="button" disabled={busy} onClick={() => onConfirmPrices(trip)}>Prices were about right</button>
+                    ) : null}
                   </div>
                 ))}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
