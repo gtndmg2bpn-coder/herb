@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getBrowserClient } from '../../lib/supabaseBrowser';
-import { generateShoppingList, logShoppingTrip, confirmTripPrices } from '../../lib/actions';
+import { generateShoppingList, logShoppingTrip, confirmTripPrices, setIngredientPrice } from '../../lib/actions';
 
 function isoDate(date) {
   const d = date ?? new Date();
@@ -132,6 +132,40 @@ export default function ShoppingPage() {
     setStep('log');
   }
 
+  async function onEditPrice(item) {
+    const proposed = window.prompt(
+      `Price for a pack of ${item.label} (${item.quantity} ${item.unit || ''}) in £.\nThis updates your pricing database and refreshes the list.`,
+      ''
+    );
+    if (proposed == null) return;
+    const pence = poundsToPence(proposed);
+    if (pence == null) {
+      setError('Price must be a non-negative number.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    const { error: priceError } = await setIngredientPrice({ ingredientId: item.ingredient_id, pricePence: pence });
+    if (priceError) {
+      setError(priceError.message);
+      setBusy(false);
+      return;
+    }
+    // regenerate so every estimate reflects the new price
+    const { error: genError } = await generateShoppingList({
+      weekStart,
+      mainTripDate: mainDate,
+      topupCadenceDays: Number(cadence) || 3,
+    });
+    if (genError) setError(genError.message);
+    try {
+      await loadTrips();
+    } catch (err) {
+      setError(err.message);
+    }
+    setBusy(false);
+  }
+
   async function onConfirmPrices(trip) {
     if (!window.confirm('Confirm the estimated prices for this trip are about right?')) return;
     setBusy(true);
@@ -225,8 +259,9 @@ export default function ShoppingPage() {
                     {itemsFor(trip.id).map((item) => (
                       <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '4px 0', borderTop: '1px solid #f4f4f4' }}>
                         <span>{item.label || 'Item'} — {item.quantity} {item.unit || ''}</span>
-                        <span style={{ color: '#666' }}>
+                        <span style={{ color: '#666', display: 'flex', gap: 6, alignItems: 'center' }}>
                           {item.buy_on_day ? 'buy on the day · ' : ''}{money(item.est_cost_pence)}
+                          <button type="button" disabled={busy} onClick={() => onEditPrice(item)} style={{ fontSize: 12 }}>edit price</button>
                         </span>
                       </div>
                     ))}
