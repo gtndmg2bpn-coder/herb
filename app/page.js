@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { getSupabase } from '../lib/supabase';
+import AuthNav from './AuthNav';
 
 // Always fetch fresh from Supabase on each request. This also keeps the
 // free-tier project warm (any query resets the 7-day pause timer).
@@ -43,14 +44,10 @@ export default async function Home() {
       <div className="masthead">
         <h1>HERB — Keto recipes</h1>
         <p>Per-portion macros and cost, rolled up live from the database.</p>
-        {/* Static front-door links only. The homepage stays a server component
-            and cannot know the browser session, so all three always render;
-            /dashboard itself redirects to /login when signed out. */}
-        <nav style={{ display: 'flex', gap: 12, marginTop: 12 }}>
-          <Link href="/dashboard">Dashboard</Link>
-          <Link href="/login">Log in</Link>
-          <Link href="/signup">Sign up</Link>
-        </nav>
+        {/* AuthNav is a client component: it checks the session and shows
+            About us + Log in / Sign up when logged out, or the user's name,
+            Dashboard and Log out when logged in. */}
+        <AuthNav />
       </div>
       {errorMessage ? (
         <div className="error">
