@@ -152,20 +152,33 @@ export default function ShoppingPage() {
     setStep('log');
   }
 
-  async function onEditPrice(item) {
-    const proposed = window.prompt(
-      `Price for ${packLabel(item)} of ${item.label} in £.\nThis updates your pricing database and refreshes the list.`,
+  async function onEditPack(item) {
+    const priceIn = window.prompt(
+      `Price for a pack of ${item.label} in £.\nThis updates your pricing database and refreshes the list.`,
       ''
     );
-    if (proposed == null) return;
-    const pence = poundsToPence(proposed);
+    if (priceIn == null) return;
+    const pence = poundsToPence(priceIn);
     if (pence == null) {
       setError('Price must be a non-negative number.');
       return;
     }
+    const packIn = window.prompt(
+      `Pack size for ${item.label} in ${item.unit || 'units'} (e.g. 500 for a 500g pack).\nLeave blank to keep the current pack size${item.pack_size ? ` (${item.pack_size}${item.unit || ''})` : ''}.`,
+      ''
+    );
+    if (packIn == null) return;
+    let packSize = null;
+    if (packIn.trim() !== '') {
+      packSize = Number(packIn);
+      if (!Number.isFinite(packSize) || packSize <= 0) {
+        setError('Pack size must be a positive number.');
+        return;
+      }
+    }
     setBusy(true);
     setError('');
-    const { error: priceError } = await setIngredientPrice({ ingredientId: item.ingredient_id, pricePence: pence });
+    const { error: priceError } = await setIngredientPrice({ ingredientId: item.ingredient_id, pricePence: pence, packSize });
     if (priceError) {
       setError(priceError.message);
       setBusy(false);
@@ -284,7 +297,7 @@ export default function ShoppingPage() {
                         </span>
                         <span style={{ color: '#666', display: 'flex', gap: 6, alignItems: 'center' }}>
                           {item.buy_on_day ? 'buy on the day · ' : ''}{money(item.est_cost_pence)}
-                          <button type="button" disabled={busy} onClick={() => onEditPrice(item)} style={{ fontSize: 12 }}>edit price</button>
+                          <button type="button" disabled={busy} onClick={() => onEditPack(item)} style={{ fontSize: 12 }}>edit pack</button>
                         </span>
                       </div>
                     ))}
