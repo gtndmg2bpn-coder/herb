@@ -205,7 +205,7 @@ export default function DashboardPage() {
 
     const { data: stockRows, error: stockError } = await supabase
       .from('pantry_stock')
-      .select('user_id, item_kind, ingredient_id, recipe_id, label, location, quantity')
+      .select('user_id, item_kind, ingredient_id, recipe_id, location, quantity')
       .eq('user_id', uid);
     if (stockError) throw stockError;
 
@@ -485,7 +485,6 @@ export default function DashboardPage() {
       toLocation: to,
       ingredientId: row.ingredient_id,
       recipeId: row.recipe_id,
-      label: row.label ?? null,
     }));
   }
 
