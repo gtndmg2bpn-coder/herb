@@ -7,6 +7,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { getBrowserClient } from '../lib/supabaseBrowser';
+import { recipeImageUrl } from '../lib/recipeImage';
 
 const WASHES = {
   Breakfast: 'linear-gradient(155deg,#F1E7D5,#F7F0E2)',
@@ -28,8 +29,7 @@ function washFor(section) {
 }
 
 function recipeImage(recipe) {
-  if (!recipe?.image_id) return null;
-  return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/recipe-images/${recipe.image_id}`;
+  return recipeImageUrl(recipe?.image_id);
 }
 
 function RecipeCard({ recipe, cost }) {
