@@ -282,17 +282,21 @@ export default function DashboardPage() {
     const userAllergens = new Set(profile?.allergens || []);
     const targetKcal = currentRecipe?.kcal ?? Math.round((profile?.target_kcal ?? 600) / 3);
 
-    const options = recipes
+    const safe = recipes
       .filter((recipe) => recipe.id !== currentRecipeId)
       .filter((recipe) => !disliked.has(recipe.id))
-      .filter((recipe) => !(allergensByRecipe[recipe.id] || []).some((allergen) => userAllergens.has(allergen)))
-      .sort((a, b) => {
-        const sectionA = currentRecipe && a.section === currentRecipe.section ? 0 : 1;
-        const sectionB = currentRecipe && b.section === currentRecipe.section ? 0 : 1;
-        if (sectionA !== sectionB) return sectionA - sectionB;
-        return Math.abs((a.kcal ?? targetKcal) - targetKcal) - Math.abs((b.kcal ?? targetKcal) - targetKcal);
-      })
-      .slice(0, 3);
+      .filter((recipe) => !(allergensByRecipe[recipe.id] || []).some((allergen) => userAllergens.has(allergen)));
+
+    // Planning an empty slot: show every safe recipe, A–Z.
+    // Swapping an existing meal: show the 3 closest matches to what was there.
+    const options = currentRecipe
+      ? [...safe].sort((a, b) => {
+          const sectionA = a.section === currentRecipe.section ? 0 : 1;
+          const sectionB = b.section === currentRecipe.section ? 0 : 1;
+          if (sectionA !== sectionB) return sectionA - sectionB;
+          return Math.abs((a.kcal ?? targetKcal) - targetKcal) - Math.abs((b.kcal ?? targetKcal) - targetKcal);
+        }).slice(0, 3)
+      : [...safe].sort((a, b) => a.name.localeCompare(b.name));
 
     setChooser({ slotDate, meal, currentRecipeId, options });
   }
@@ -602,16 +606,20 @@ export default function DashboardPage() {
 
       {chooser ? (
         <section ref={chooserRef} style={{ border: '1px solid #ddd', borderRadius: 12, padding: 16, scrollMarginTop: 16 }}>
-          <h2 style={{ marginTop: 0 }}>Choose a swap</h2>
-          {chooser.options.length ? chooser.options.map((option) => (
-            <div key={option.id} style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #eee', padding: '8px 0' }}>
-              <span>{option.name} <span style={{ color: '#666' }}>({option.kcal ?? '—'} kcal)</span></span>
-              <span style={{ display: 'flex', gap: 6 }}>
-                <button type="button" disabled={busy} onClick={() => chooseSwap(option, false)}>Just this once</button>
-                <button type="button" disabled={busy} onClick={() => chooseSwap(option, true)}>Never again</button>
-              </span>
-            </div>
-          )) : <p>No safe alternatives found with the current allergens/dislikes.</p>}
+          <h2 style={{ marginTop: 0 }}>{chooser.currentRecipeId ? 'Choose a swap' : 'Plan a meal'}</h2>
+          <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+            {chooser.options.length ? chooser.options.map((option) => (
+              <div key={option.id} style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #eee', padding: '8px 0' }}>
+                <span>{option.name} <span style={{ color: '#666' }}>({option.kcal ?? '—'} kcal)</span></span>
+                <span style={{ display: 'flex', gap: 6 }}>
+                  <button type="button" disabled={busy} onClick={() => chooseSwap(option, false)}>{chooser.currentRecipeId ? 'Just this once' : 'Plan it'}</button>
+                  {chooser.currentRecipeId ? (
+                    <button type="button" disabled={busy} onClick={() => chooseSwap(option, true)}>Never again</button>
+                  ) : null}
+                </span>
+              </div>
+            )) : <p>No safe recipes found with the current allergens/dislikes.</p>}
+          </div>
           <button type="button" disabled={busy} onClick={() => setChooser(null)}>Close</button>
         </section>
       ) : null}
