@@ -1,16 +1,20 @@
 'use client';
 // app/AuthNav.js
-// Client-side nav that knows the login session (the homepage itself is a
-// server component and cannot). Logged out: Log in / Sign up.
-// Logged in: the user's display name, Dashboard, and Log out.
+// Editorial nav. Logged out: marketing nav (center links + Log in / Start free).
+// Logged in: app nav (Hi {name}, Browse recipes, Shopping list, Log out).
+// Hidden on the auth pages — those are full split-screen layouts with their
+// own logo.
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { getBrowserClient } from '../lib/supabaseBrowser';
+
+const HIDDEN_ON = ['/login', '/signup'];
 
 export default function AuthNav() {
   const router = useRouter();
+  const pathname = usePathname();
   const [ready, setReady] = useState(false);
   const [name, setName] = useState(null);
 
@@ -46,24 +50,54 @@ export default function AuthNav() {
     router.refresh();
   }
 
+  if (HIDDEN_ON.includes(pathname)) return null;
   // Render nothing until we know the session, so the nav doesn't flash
   // from "Log in" to the user's name on every page load.
   if (!ready) return null;
 
   return (
-    <nav style={{ display: 'flex', gap: 12, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-      <Link href="/about">About us</Link>
+    <nav style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: name ? '16px 32px' : '14px 32px',
+      position: 'sticky', top: 0,
+      background: 'rgba(251,247,241,.92)', backdropFilter: 'blur(12px)',
+      zIndex: 100, borderBottom: '1px solid #E7DFD4',
+    }}>
+      <Link href="/" style={{
+        fontWeight: 800, letterSpacing: '-.02em', lineHeight: 1,
+        fontSize: name ? 24 : 40, color: '#2A2932', textDecoration: 'none',
+      }}>
+        HERB<span style={{ color: '#E7A6B5' }}>.</span>
+      </Link>
+
       {name ? (
-        <>
-          <span>Hi, {name}</span>
-          <Link href="/dashboard">Dashboard</Link>
-          <Link href="/shopping">Shopping list</Link>
-          <button type="button" onClick={signOut}>Log out</button>
-        </>
+        <div style={{ display: 'flex', gap: 24, fontSize: 14, fontWeight: 600, color: '#5B5966', alignItems: 'center', flexWrap: 'wrap' }}>
+          <Link href="/dashboard" style={{ color: '#2A2932', fontWeight: 700, textDecoration: 'none' }}>Hi, {name}</Link>
+          <Link href="/" style={{ textDecoration: 'none', color: 'inherit' }}>Browse recipes</Link>
+          <Link href="/shopping" style={{ textDecoration: 'none', color: 'inherit' }}>Shopping list</Link>
+          <button
+            type="button"
+            onClick={signOut}
+            style={{ border: '1.5px solid #2A2932', borderRadius: 100, padding: '8px 16px', fontSize: 13, fontWeight: 700, color: '#2A2932', background: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            Log out
+          </button>
+        </div>
       ) : (
         <>
-          <Link href="/login">Log in</Link>
-          <Link href="/signup">Sign up</Link>
+          <div style={{ display: 'flex', gap: 30, fontSize: 16, fontWeight: 600, color: '#5B5966' }} className="herb-nav-center">
+            <Link href="/#recipes" style={{ textDecoration: 'none', color: 'inherit' }}>Recipes</Link>
+            <Link href="/about" style={{ textDecoration: 'none', color: 'inherit' }}>About</Link>
+            <Link href="/about" style={{ textDecoration: 'none', color: 'inherit' }}>What is Herb</Link>
+            <Link href="/#blog" style={{ textDecoration: 'none', color: 'inherit' }}>Blog</Link>
+            <Link href="/#faq" style={{ textDecoration: 'none', color: 'inherit' }}>FAQ</Link>
+          </div>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+            <Link href="/login" style={{ fontSize: 15, fontWeight: 600, color: '#2A2932', textDecoration: 'none' }}>Log in</Link>
+            <Link href="/signup" style={{ border: '1.5px solid #2A2932', borderRadius: 100, padding: '12px 24px', fontSize: 14, fontWeight: 700, color: '#2A2932', textDecoration: 'none' }}>
+              Start free
+            </Link>
+          </div>
         </>
       )}
     </nav>
