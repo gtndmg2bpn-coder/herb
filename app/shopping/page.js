@@ -3,6 +3,8 @@
 // Three-step flow: questions -> the list -> log the shop.
 // The list rolls up planned meals minus pantry stock and auto-splits into a
 // main shop and a midweek top-up (short-life food can't survive one weekly shop).
+// Lines show what you actually carry home: "2 × 500g packs" with the raw need
+// underneath, so the pack rounding is never a mystery.
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
@@ -25,6 +27,24 @@ function poundsToPence(value) {
   const pounds = Number(value);
   if (!Number.isFinite(pounds) || pounds < 0) return null;
   return Math.round(pounds * 100);
+}
+
+// "2 × 500g packs" when we know the pack size, plain quantity otherwise.
+function packLabel(item) {
+  const packSize = Number(item.pack_size);
+  if (packSize > 0) {
+    const packs = Math.max(1, Math.round(Number(item.quantity) / packSize));
+    return `${packs} × ${packSize}${item.unit || ''} pack${packs > 1 ? 's' : ''}`;
+  }
+  return `${item.quantity} ${item.unit || ''}`.trim();
+}
+
+// "need 550g" — only shown when the packs round up beyond the raw need.
+function needLabel(item) {
+  if (item.needed_qty == null) return null;
+  const needed = Number(item.needed_qty);
+  if (!(needed > 0) || needed >= Number(item.quantity)) return null;
+  return `need ${needed}${item.unit || ''}`;
 }
 
 export default function ShoppingPage() {
@@ -134,7 +154,7 @@ export default function ShoppingPage() {
 
   async function onEditPrice(item) {
     const proposed = window.prompt(
-      `Price for a pack of ${item.label} (${item.quantity} ${item.unit || ''}) in £.\nThis updates your pricing database and refreshes the list.`,
+      `Price for ${packLabel(item)} of ${item.label} in £.\nThis updates your pricing database and refreshes the list.`,
       ''
     );
     if (proposed == null) return;
@@ -258,7 +278,10 @@ export default function ShoppingPage() {
                     </h2>
                     {itemsFor(trip.id).map((item) => (
                       <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '4px 0', borderTop: '1px solid #f4f4f4' }}>
-                        <span>{item.label || 'Item'} — {item.quantity} {item.unit || ''}</span>
+                        <span>
+                          {item.label || 'Item'} — {packLabel(item)}
+                          {needLabel(item) ? <span style={{ color: '#666', fontSize: 12 }}> ({needLabel(item)})</span> : null}
+                        </span>
                         <span style={{ color: '#666', display: 'flex', gap: 6, alignItems: 'center' }}>
                           {item.buy_on_day ? 'buy on the day · ' : ''}{money(item.est_cost_pence)}
                           <button type="button" disabled={busy} onClick={() => onEditPrice(item)} style={{ fontSize: 12 }}>edit price</button>
@@ -296,7 +319,7 @@ export default function ShoppingPage() {
                     checked={ticks[item.id]?.bought ?? true}
                     onChange={(event) => setTicks({ ...ticks, [item.id]: { ...ticks[item.id], bought: event.target.checked } })}
                   />
-                  <span style={{ flex: 1 }}>{item.label} — {item.quantity} {item.unit || ''}</span>
+                  <span style={{ flex: 1 }}>{item.label} — {packLabel(item)}</span>
                   <span style={{ color: '#666' }}>{money(item.est_cost_pence)}</span>
                   <input
                     placeholder="actual £"
