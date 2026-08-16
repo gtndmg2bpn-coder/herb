@@ -20,6 +20,8 @@ import {
 const MEALS = ['breakfast', 'lunch', 'dinner'];
 const LOCATIONS = ['fridge', 'freezer', 'cupboard'];
 const SPEND_CATEGORIES = ['grocery', 'eating_out', 'other'];
+// The 14 UK major allergens
+const ALLERGENS = ['celery', 'gluten', 'crustaceans', 'eggs', 'fish', 'lupin', 'milk', 'molluscs', 'mustard', 'nuts', 'peanuts', 'sesame', 'soy', 'sulphites'];
 
 function isoDate(date) {
   return date.toISOString().slice(0, 10);
@@ -83,6 +85,7 @@ export default function DashboardPage() {
   const [planSlots, setPlanSlots] = useState([]);
   const [recipes, setRecipes] = useState([]);
   const [ingredients, setIngredients] = useState([]);
+  const [recipeIngredients, setRecipeIngredients] = useState([]);
   const [costByRecipe, setCostByRecipe] = useState({});
   const [allergensByRecipe, setAllergensByRecipe] = useState({});
 
@@ -125,6 +128,14 @@ export default function DashboardPage() {
   const recipeById = useMemo(() => Object.fromEntries(recipes.map((recipe) => [recipe.id, recipe])), [recipes]);
   const ingredientById = useMemo(() => Object.fromEntries(ingredients.map((ingredient) => [ingredient.id, ingredient])), [ingredients]);
   const slotByKey = useMemo(() => Object.fromEntries(planSlots.map((slot) => [slotKey(slot.slot_date, slot.meal), slot])), [planSlots]);
+  const ingredientsByRecipe = useMemo(() => {
+    const map = {};
+    recipeIngredients.forEach((row) => {
+      if (!map[row.recipe_id]) map[row.recipe_id] = new Set();
+      map[row.recipe_id].add(row.ingredient_id);
+    });
+    return map;
+  }, [recipeIngredients]);
   const householdPortions = profile?.household_portions ?? 1;
 
   async function loadAll(liveSession) {
@@ -134,7 +145,7 @@ export default function DashboardPage() {
 
     const { data: prof, error: profError } = await supabase
       .from('profiles')
-      .select('display_name, start_weight_kg, goal_weight_kg, target_kcal, target_protein_g, target_carbs_g, target_fat_g, diet, preferred_units, household_portions, disliked_recipe_ids, allergens, dislikes')
+      .select('display_name, start_weight_kg, goal_weight_kg, target_kcal, target_protein_g, target_carbs_g, target_fat_g, diet, preferred_units, household_portions, disliked_recipe_ids, disliked_ingredient_ids, allergens, dislikes')
       .eq('id', uid)
       .maybeSingle();
     if (profError) throw profError;
@@ -184,6 +195,11 @@ export default function DashboardPage() {
       .select('recipe_id, contains');
     if (allergensError) throw allergensError;
 
+    const { data: recipeIngRows, error: recipeIngError } = await supabase
+      .from('recipe_ingredients')
+      .select('recipe_id, ingredient_id');
+    if (recipeIngError) throw recipeIngError;
+
     const { data: stockRows, error: stockError } = await supabase
       .from('pantry_stock')
       .select('user_id, item_kind, ingredient_id, recipe_id, location, quantity')
@@ -219,6 +235,7 @@ export default function DashboardPage() {
     setIngredients(ingredientRows || []);
     setCostByRecipe(Object.fromEntries((costRows || []).map((row) => [row.recipe_id, row.cost_gbp])));
     setAllergensByRecipe(Object.fromEntries((allergenRows || []).map((row) => [row.recipe_id, row.contains || []])));
+    setRecipeIngredients(recipeIngRows || []);
     setPantryStock(stockRows || []);
     setPantryLots(lotRows || []);
     setSpendRows(spends || []);
@@ -278,19 +295,65 @@ export default function DashboardPage() {
     setBusy(false);
   }
 
+  async function saveProfile(patch) {
+    if (!session) return;
+    setBusy(true);
+    setError('');
+    const supabase = getBrowserClient();
+    const { error: updateError } = await supabase.from('profiles').update(patch).eq('id', session.user.id);
+    if (updateError) setError(updateError.message);
+    await refreshAfterAction();
+    setBusy(false);
+  }
+
+  function toggleAllergen(allergen) {
+    const current = new Set(profile?.allergens || []);
+    if (current.has(allergen)) current.delete(allergen);
+    else current.add(allergen);
+    saveProfile({ allergens: [...current] });
+  }
+
+  function addDislikedIngredient(ingredientId) {
+    if (!ingredientId) return;
+    const current = new Set(profile?.disliked_ingredient_ids || []);
+    current.add(ingredientId);
+    saveProfile({ disliked_ingredient_ids: [...current] });
+  }
+
+  function removeDislikedIngredient(ingredientId) {
+    const current = new Set(profile?.disliked_ingredient_ids || []);
+    current.delete(ingredientId);
+    saveProfile({ disliked_ingredient_ids: [...current] });
+  }
+
   function openChooser(slotDate, meal, currentRecipeId) {
     const disliked = new Set(profile?.disliked_recipe_ids || []);
+    const dislikedIngredients = new Set(profile?.disliked_ingredient_ids || []);
     const userAllergens = new Set(profile?.allergens || []);
 
-    const safe = recipes
-      .filter((recipe) => recipe.id !== currentRecipeId)
-      .filter((recipe) => !disliked.has(recipe.id))
+    const afterCurrent = recipes.filter((recipe) => recipe.id !== currentRecipeId);
+    const noDislike = afterCurrent.filter((recipe) => !disliked.has(recipe.id));
+    const safe = noDislike
       .filter((recipe) => !(allergensByRecipe[recipe.id] || []).some((allergen) => userAllergens.has(allergen)));
+    const noIngDislike = safe.filter((recipe) => {
+      const ingSet = ingredientsByRecipe[recipe.id];
+      if (!ingSet) return true;
+      for (const id of dislikedIngredients) {
+        if (ingSet.has(id)) return false;
+      }
+      return true;
+    });
 
     // Both planning and swapping show every safe recipe, A–Z.
-    const options = [...safe].sort((a, b) => a.name.localeCompare(b.name));
+    const options = [...noIngDislike].sort((a, b) => a.name.localeCompare(b.name));
 
-    setChooser({ slotDate, meal, currentRecipeId, options });
+    setChooser({
+      slotDate, meal, currentRecipeId, options,
+      total: recipes.length,
+      hiddenDisliked: afterCurrent.length - noDislike.length,
+      hiddenAllergens: noDislike.length - safe.length,
+      hiddenIngDislikes: safe.length - noIngDislike.length,
+    });
   }
 
   async function chooseSwap(option, neverAgain) {
@@ -577,6 +640,56 @@ export default function DashboardPage() {
         )}
       </section>
 
+      <section style={{ border: '1px solid #ddd', borderRadius: 12, padding: 16, display: 'grid', gap: 12 }}>
+        <h2 style={{ marginTop: 0 }}>Allergens &amp; dislikes</h2>
+        <div>
+          <strong style={{ fontSize: 14 }}>Allergens — tap to toggle. Recipes containing them are hidden, safely.</strong>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+            {ALLERGENS.map((allergen) => {
+              const active = (profile?.allergens || []).includes(allergen);
+              return (
+                <button
+                  key={allergen}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => toggleAllergen(allergen)}
+                  style={{
+                    borderRadius: 999,
+                    padding: '4px 12px',
+                    border: '1px solid #ddd',
+                    cursor: 'pointer',
+                    background: active ? '#2A2932' : '#fff',
+                    color: active ? '#fff' : '#2A2932',
+                  }}
+                >
+                  {allergen}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div>
+          <strong style={{ fontSize: 14 }}>Disliked ingredients — hidden from your meal choices.</strong>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
+            {(profile?.disliked_ingredient_ids || []).map((id) => (
+              <span key={id} style={{ borderRadius: 999, padding: '4px 10px', border: '1px solid #ddd', fontSize: 13 }}>
+                {ingredientById[id]?.name ?? 'Ingredient'}
+                <button type="button" disabled={busy} onClick={() => removeDislikedIngredient(id)} style={{ border: 'none', background: 'none', cursor: 'pointer', marginLeft: 4 }}>×</button>
+              </span>
+            ))}
+            <select value="" disabled={busy} onChange={(event) => addDislikedIngredient(event.target.value)}>
+              <option value="">+ add ingredient…</option>
+              {ingredients.map((ingredient) => <option key={ingredient.id} value={ingredient.id}>{ingredient.name}</option>)}
+            </select>
+          </div>
+          {(profile?.dislikes || []).length > 0 ? (
+            <p style={{ fontSize: 12, color: '#666', margin: '8px 0 0' }}>
+              Typed dislikes ({(profile?.dislikes || []).join(', ')}) don&rsquo;t filter choices — re-add them with the picker above.
+            </p>
+          ) : null}
+        </div>
+      </section>
+
       <section style={{ border: '1px solid #ddd', borderRadius: 12, padding: 16 }}>
         <h2 style={{ marginTop: 0 }}>Next 7 days</h2>
         <div style={{ display: 'grid', gap: 12 }}>
@@ -638,7 +751,13 @@ export default function DashboardPage() {
       {chooser ? (
         <section ref={chooserRef} style={{ border: '1px solid #ddd', borderRadius: 12, padding: 16, scrollMarginTop: 16 }}>
           <h2 style={{ marginTop: 0 }}>{chooser.currentRecipeId ? 'Choose a swap' : 'Plan a meal'}</h2>
-          <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+          <p style={{ margin: '0 0 8px', fontSize: 12, color: '#666' }}>
+            Showing {chooser.options.length} of {chooser.total ?? chooser.options.length} recipes — scroll inside the box to see them all.
+            {chooser.hiddenAllergens > 0 ? ` ${chooser.hiddenAllergens} hidden by your allergens.` : ''}
+            {chooser.hiddenDisliked > 0 ? ` ${chooser.hiddenDisliked} hidden by "never again".` : ''}
+            {chooser.hiddenIngDislikes > 0 ? ` ${chooser.hiddenIngDislikes} hidden by your disliked ingredients.` : ''}
+          </p>
+          <div style={{ maxHeight: 480, overflowY: 'auto' }}>
             {chooser.options.length ? chooser.options.map((option) => (
               <div key={option.id} style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #eee', padding: '8px 0' }}>
                 <span>{option.name} <span style={{ color: '#666' }}>({option.kcal ?? '—'} kcal)</span></span>
