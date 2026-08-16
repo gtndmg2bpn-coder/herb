@@ -14,6 +14,7 @@ import {
   logSpend,
   logOffPlanIntake,
   logWeight,
+  cookMeal,
 } from '../../lib/actions';
 
 const MEALS = ['breakfast', 'lunch', 'dinner'];
@@ -107,7 +108,7 @@ export default function DashboardPage() {
     expiryDate: '',
     boughtDate: '',
   });
-  const [intakeForm, setIntakeForm] = useState({ description: '', kcal: '', proteinG: '', carbsG: '', fatG: '', costPounds: '' });
+  const [intakeForm, setIntakeForm] = useState({ description: '', kcal: '', proteinG: '', carbsG: '', fatG: '', costPounds: '', pantryIngredientId: '', pantryQuantity: '' });
   const [spendForm, setSpendForm] = useState({ amountPounds: '', category: 'grocery' });
 
   const chooserRef = useRef(null);
@@ -169,7 +170,7 @@ export default function DashboardPage() {
 
     const { data: ingredientRows, error: ingredientsError } = await supabase
       .from('ingredients')
-      .select('id, name, unit')
+      .select('id, name, unit, category, storage_location')
       .order('name');
     if (ingredientsError) throw ingredientsError;
 
@@ -384,6 +385,22 @@ export default function DashboardPage() {
     }));
   }
 
+  async function cookSlot(slot) {
+    await runAction(
+      `Mark ${dayLabel(slot.slot_date)} ${slot.meal} as cooked? This takes the ingredients from your pantry.`,
+      async () => {
+        const result = await cookMeal({ slotDate: slot.slot_date, meal: slot.meal });
+        if (!result.error && result.data?.shortfalls?.length) {
+          const list = result.data.shortfalls
+            .map((s) => `${s.name ?? 'An ingredient'}: ${s.short}${s.unit ? ` ${s.unit}` : ''} short`)
+            .join('; ');
+          setError(`Cooked, but the pantry was short — ${list}.`);
+        }
+        return result;
+      }
+    );
+  }
+
   async function submitIntake() {
     if (!intakeForm.description.trim()) {
       setError('Off-plan intake needs a description.');
@@ -397,7 +414,21 @@ export default function DashboardPage() {
       fatG: optionalNumber(intakeForm.fatG),
       costPence: poundsToPence(intakeForm.costPounds),
     }));
-    setIntakeForm({ description: '', kcal: '', proteinG: '', carbsG: '', fatG: '', costPounds: '' });
+
+    // Optional: the dish used something from the pantry (e.g. your own pesto pasta)
+    const drainQty = Number(intakeForm.pantryQuantity);
+    if (intakeForm.pantryIngredientId && Number.isFinite(drainQty) && drainQty > 0) {
+      const ing = ingredientById[intakeForm.pantryIngredientId];
+      const location = ing?.storage_location || (ing?.category === 'cupboard' ? 'cupboard' : 'fridge');
+      await runAction(`Also take ${drainQty} ${ing?.unit || ''} of ${ing?.name} from the pantry?`, () => consumePantryItem({
+        itemKind: 'ingredient',
+        quantity: drainQty,
+        location,
+        ingredientId: intakeForm.pantryIngredientId,
+      }));
+    }
+
+    setIntakeForm({ description: '', kcal: '', proteinG: '', carbsG: '', fatG: '', costPounds: '', pantryIngredientId: '', pantryQuantity: '' });
   }
 
   async function submitSpend() {
@@ -576,6 +607,11 @@ export default function DashboardPage() {
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
                             <button type="button" disabled={busy} onClick={() => openChooser(slotDate, meal, recipe.id)}>Swap</button>
                             <button type="button" disabled={busy} onClick={() => editPortions(slot)}>Portions: {slot.portions ?? householdPortions}</button>
+                            {slot.cooked_at ? (
+                              <span style={{ fontSize: 12, color: '#3b7d3b', alignSelf: 'center' }}>Cooked ✓</span>
+                            ) : (
+                              <button type="button" disabled={busy} onClick={() => cookSlot(slot)}>Cooked</button>
+                            )}
                           </div>
                         </div>
                       ) : (
@@ -701,6 +737,14 @@ export default function DashboardPage() {
           <input placeholder="fat g" value={intakeForm.fatG} onChange={(event) => setIntakeForm({ ...intakeForm, fatG: event.target.value })} />
           <input placeholder="Cost (£, optional)" value={intakeForm.costPounds} onChange={(event) => setIntakeForm({ ...intakeForm, costPounds: event.target.value })} />
         </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: '#666' }}>Used from pantry (optional):</span>
+          <select value={intakeForm.pantryIngredientId} onChange={(event) => setIntakeForm({ ...intakeForm, pantryIngredientId: event.target.value })}>
+            <option value="">Choose ingredient…</option>
+            {ingredients.map((ingredient) => <option key={ingredient.id} value={ingredient.id}>{ingredient.name}</option>)}
+          </select>
+          <input placeholder="Qty" style={{ width: 72 }} value={intakeForm.pantryQuantity} onChange={(event) => setIntakeForm({ ...intakeForm, pantryQuantity: event.target.value })} />
+        </div>
         <button type="button" disabled={busy} onClick={submitIntake}>Log intake</button>
         {intakeRows.map((row) => (
           <p key={row.id} style={{ margin: 0, color: '#666' }}>
@@ -711,7 +755,7 @@ export default function DashboardPage() {
         ))}
 
         <h2>Log spend</h2>
-        <p style={{ margin: 0 }}>This week: <b>{money(weekTotalPence)}</b></p>
+        <p style={{ margin: 0 }}>This week (cash out): <b>{money(weekTotalPence)}</b></p>
         <p style={{ margin: 0, fontSize: 12, color: '#666' }}>
           Logged {money(weekSpendPence)} · eating out (est.) {money(eatingOutPence)} · off-plan {money(offPlanPence)}
         </p>
