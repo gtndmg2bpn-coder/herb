@@ -1067,7 +1067,10 @@ export default function DashboardPage() {
       <section>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 18 }}>
           <h2 style={{ fontWeight: 800, fontSize: 24, letterSpacing: '-.03em', margin: 0 }}>This week</h2>
-          <Link href="/shopping" style={{ fontSize: 13, fontWeight: 600, textDecoration: 'underline' }}>View shopping list →</Link>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <Link href="/plan" style={{ background: INK, color: CREAM, borderRadius: 100, padding: '10px 18px', fontSize: 13, fontWeight: 700, textDecoration: 'none' }}>Plan my week →</Link>
+            <Link href="/shopping" style={{ fontSize: 13, fontWeight: 600, textDecoration: 'underline' }}>View shopping list →</Link>
+          </div>
         </div>
         <div className="dash-week" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 10 }}>
           {weekDays.map((slotDate) => (
