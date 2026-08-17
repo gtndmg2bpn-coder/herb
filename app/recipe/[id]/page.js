@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getSupabase } from '../../../lib/supabase';
+import RecipeActions, { MeasureUnitsProvider, Qty } from './RecipeActions';
 
 export const dynamic = 'force-dynamic';
 
@@ -82,7 +83,10 @@ export default async function RecipeDetail({ params }) {
       });
     }
     ingredients = (riRows || []).map((r) => ({
+      ingredientId: r.ingredient_id,
       name: ingMap[r.ingredient_id]?.name || 'Unknown ingredient',
+      quantity: r.quantity,
+      unit: ingMap[r.ingredient_id]?.unit || null,
       amount: formatAmount(r.quantity, ingMap[r.ingredient_id]?.unit),
     }));
   } catch {
@@ -99,7 +103,11 @@ export default async function RecipeDetail({ params }) {
     { key: 'fibre_g', label: 'Fibre', value: recipe.fibre_g, suffix: 'g' },
   ].filter((t) => t.value !== null && t.value !== undefined);
 
+  // Island props: plain, serialisable data only — no per-user reads here.
+  const islandIngredients = ingredients.filter((ing) => ing.ingredientId);
+
   return (
+    <MeasureUnitsProvider>
     <main className="wrap">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <Link href="/" className="back">
@@ -139,6 +147,8 @@ export default async function RecipeDetail({ params }) {
         </div>
       </div>
 
+      <RecipeActions recipeId={id} ingredients={islandIngredients} />
+
       <p className="section-label">Ingredients</p>
       {ingredientsReadable ? (
         ingredients.length > 0 ? (
@@ -146,7 +156,7 @@ export default async function RecipeDetail({ params }) {
             {ingredients.map((ing, i) => (
               <li key={i}>
                 <span>{ing.name}</span>
-                <span className="amt">{ing.amount}</span>
+                <span className="amt"><Qty quantity={ing.quantity} unit={ing.unit} /></span>
               </li>
             ))}
           </ul>
@@ -209,5 +219,6 @@ export default async function RecipeDetail({ params }) {
         </div>
       )}
     </main>
+    </MeasureUnitsProvider>
   );
 }
