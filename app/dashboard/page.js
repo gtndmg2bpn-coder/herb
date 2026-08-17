@@ -910,6 +910,39 @@ export default function DashboardPage() {
                 <button type="button" disabled={busy} onClick={submitWeight} style={{ ...darkPillButton, opacity: busy ? 0.7 : 1 }}>
                   Log weight
                 </button>
+                {/* Weight units: display + input only. Storage stays kg end-to-end
+                    (weight_log.weight_kg; logWeight({ weightKg })). This writes
+                    profiles.preferred_units via saveProfile — the same write path
+                    the allergen toggles use — and every weight surface (inputs,
+                    start/now/goal, chart goal label) follows the preference. */}
+                <div role="group" aria-label="Weight units" style={{ display: 'flex', border: `1.5px solid ${HAIRLINE}`, borderRadius: 100, overflow: 'hidden' }}>
+                  {[
+                    { value: 'imperial', label: 'st + lb' },
+                    { value: 'metric', label: 'kg' },
+                  ].map((option) => {
+                    const activeUnit = (profile.preferred_units === 'imperial' ? 'imperial' : 'metric') === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        disabled={busy || activeUnit}
+                        onClick={() => saveProfile({ preferred_units: option.value })}
+                        style={{
+                          border: 'none',
+                          padding: '8px 14px',
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: activeUnit ? 'default' : 'pointer',
+                          fontFamily: 'inherit',
+                          background: activeUnit ? INK : 'transparent',
+                          color: activeUnit ? CREAM : MUTED,
+                        }}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </>
           ) : (
