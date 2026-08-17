@@ -1,9 +1,9 @@
 import { cookies } from 'next/headers';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { notFound } from 'next/navigation';
-import { recipeImageUrl } from '@/lib/recipe-image';
-import { MeasureUnitsProvider } from '@/components/MeasureUnitsProvider';
-import { Qty } from '@/components/Qty';
+import { recipeImageUrl } from '../../../lib/recipe-image';
+import { MeasureUnitsProvider } from '../../../components/MeasureUnitsProvider';
+import { Qty } from '../../../components/Qty';
 import RecipeActions from './RecipeActions';
 
 export const dynamic = 'force-dynamic';
@@ -12,7 +12,6 @@ export default async function RecipeDetailPage({ params }) {
   const supabase = createServerComponentClient({ cookies });
   const { id } = params;
 
-  // Fetch recipe with ingredients and steps
   const { data: recipe } = await supabase
     .from('recipes')
     .select(`
@@ -31,14 +30,12 @@ export default async function RecipeDetailPage({ params }) {
 
   const imageUrl = recipeImageUrl(recipe.image_id);
 
-  // Fetch related recipes (same section, or any others)
   const { data: related } = await supabase
     .from('recipes')
     .select('id, name, tag, cost_per_portion, kcal, image_id, wash, section')
     .neq('id', id)
     .limit(3);
 
-  // Macro bars data
   const macros = [
     {
       label: 'Protein',
@@ -66,7 +63,6 @@ export default async function RecipeDetailPage({ params }) {
     },
   ];
 
-  // Sort steps
   const steps = (recipe.recipe_steps || []).sort(
     (a, b) => (a.step_number ?? 0) - (b.step_number ?? 0)
   );
@@ -83,7 +79,6 @@ export default async function RecipeDetailPage({ params }) {
           WebkitFontSmoothing: 'antialiased',
         }}
       >
-        {/* Back link */}
         <div style={{ padding: '24px 0 0' }}>
           <a
             href="/"
@@ -98,7 +93,6 @@ export default async function RecipeDetailPage({ params }) {
           </a>
         </div>
 
-        {/* Header */}
         <header
           style={{
             padding: '24px 0 10px',
@@ -108,7 +102,6 @@ export default async function RecipeDetailPage({ params }) {
             alignItems: 'start',
           }}
         >
-          {/* Hero image */}
           <div
             style={{
               height: 420,
@@ -142,7 +135,6 @@ export default async function RecipeDetailPage({ params }) {
             </span>
           </div>
 
-          {/* Info */}
           <div>
             <div
               style={{
@@ -178,7 +170,6 @@ export default async function RecipeDetailPage({ params }) {
               {recipe.description}
             </p>
 
-            {/* Stats strip */}
             <div
               style={{
                 display: 'grid',
@@ -303,12 +294,10 @@ export default async function RecipeDetailPage({ params }) {
               </div>
             </div>
 
-            {/* Client island: pantry-match banner + actions */}
             <RecipeActions recipeId={recipe.id} />
           </div>
         </header>
 
-        {/* Ingredients & Method */}
         <section
           style={{
             padding: '60px 0 10px',
@@ -355,9 +344,7 @@ export default async function RecipeDetailPage({ params }) {
                   >
                     {ri.ingredients?.name || ri.name || '—'}
                   </span>
-                  <span
-                    style={{ color: '#5B5966', fontWeight: 600 }}
-                  >
+                  <span style={{ color: '#5B5966', fontWeight: 600 }}>
                     <Qty amount={ri.amount} unit={ri.unit} />
                   </span>
                 </div>
@@ -414,7 +401,6 @@ export default async function RecipeDetailPage({ params }) {
           </div>
         </section>
 
-        {/* Macros */}
         <section style={{ padding: '60px 0 10px' }}>
           <h2
             style={{
@@ -470,7 +456,6 @@ export default async function RecipeDetailPage({ params }) {
           </div>
         </section>
 
-        {/* Related recipes */}
         <section style={{ padding: '70px 0 10px' }}>
           <h2
             style={{
