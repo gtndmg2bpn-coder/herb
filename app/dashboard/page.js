@@ -22,7 +22,7 @@ import {
 
 const MEALS = ['breakfast', 'lunch', 'dinner'];
 const LOCATIONS = ['fridge', 'freezer', 'cupboard'];
-const SPEND_CATEGORIES = ['grocery', 'eating_out', 'other'];
+const SPEND_CATEGORIES = ['grocery', 'eating_out', 'sundry'];
 // The 14 UK major allergens.
 // These codes are written to profiles.allergens and matched, verbatim, against
 // recipe_allergens.contains — so they MUST equal the data's canonical codes.
@@ -382,7 +382,7 @@ export default function DashboardPage() {
 
     const { data: spends, error: spendError } = await supabase
       .from('spend_log')
-      .select('amount_pence, spend_date')
+      .select('amount_pence, spend_date, category')
       .eq('user_id', uid)
       .gte('spend_date', weekStart);
     if (spendError) throw spendError;
@@ -813,6 +813,15 @@ export default function DashboardPage() {
   if (checking || !session) return null;
 
   const weekSpendPence = spendRows.reduce((sum, row) => sum + (row.amount_pence || 0), 0);
+  // KIMI NOTE: category split is display-only (Slice 1 — Sundries). weekSpendPence
+  // stays the full logged total; groceries/sundries are subsets of it, so
+  // weekTotalPence below is computed exactly as before.
+  const grocerySpendPence = spendRows
+    .filter((row) => row.category === 'grocery')
+    .reduce((sum, row) => sum + (row.amount_pence || 0), 0);
+  const sundrySpendPence = spendRows
+    .filter((row) => row.category === 'sundry')
+    .reduce((sum, row) => sum + (row.amount_pence || 0), 0);
   const eatingOutPence = planSlots
     .filter((slot) => slot.eating_out)
     .reduce((sum, slot) => sum + (slot.est_cost_pence || 0), 0);
@@ -1022,7 +1031,7 @@ export default function DashboardPage() {
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.14em', textTransform: 'uppercase', color: PINK, marginBottom: 8 }}>This week&rsquo;s spend</div>
           <div style={{ fontSize: 44, fontWeight: 800, letterSpacing: '-.02em' }}>{money(weekTotalPence)}</div>
           <div style={{ fontSize: 13, color: '#C7C4D1', marginTop: 8 }}>
-            Logged {money(weekSpendPence)} · Eating out (est.) {money(eatingOutPence)} · Off-plan {money(offPlanPence)}
+            Groceries {money(grocerySpendPence)} · Eating out (est.) {money(eatingOutPence)} · Off-plan {money(offPlanPence)} · Sundries {money(sundrySpendPence)}
           </div>
           <div style={{ fontSize: 13, color: '#C7C4D1', marginTop: 4 }}>
             Eaten {money(eatenPence)} <span style={{ opacity: 0.75 }}>— what you actually consumed</span> · Binned {money(binnedPence)} <span style={{ opacity: 0.75 }}>— paid for but thrown away</span>
