@@ -108,8 +108,11 @@ function formatWeight(weightKg, units) {
   if (weightKg == null) return '—';
   if (units === 'imperial') {
     const totalLb = Number(weightKg) * 2.2046226218;
-    const stone = Math.floor(totalLb / 14);
-    const pounds = Math.round(totalLb - stone * 14);
+    let stone = Math.floor(totalLb / 14);
+    let pounds = Math.round(totalLb - stone * 14);
+    // Rounding can push pounds to 14 (e.g. 76.20 kg = 167.99 lb) —
+    // roll over into the stone so we never print "N st 14 lb".
+    if (pounds === 14) { stone += 1; pounds = 0; }
     return `${stone} st ${pounds} lb`;
   }
   return `${Number(weightKg).toFixed(1)} kg`;
