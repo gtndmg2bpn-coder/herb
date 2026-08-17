@@ -1033,6 +1033,7 @@ export default function DashboardPage() {
           <div style={{ fontSize: 13, color: '#C7C4D1', marginTop: 8 }}>
             Groceries {money(grocerySpendPence)} · Eating out (est.) {money(eatingOutPence)} · Off-plan {money(offPlanPence)} · Sundries {money(sundrySpendPence)}
           </div>
+          <Link href="/spend" style={{ display: 'inline-block', marginTop: 12, fontSize: 13, fontWeight: 700, color: CREAM, textDecoration: 'underline' }}>View logged spend →</Link>
           <div style={{ fontSize: 13, color: '#C7C4D1', marginTop: 4 }}>
             Eaten {money(eatenPence)} <span style={{ opacity: 0.75 }}>— what you actually consumed</span> · Binned {money(binnedPence)} <span style={{ opacity: 0.75 }}>— paid for but thrown away</span>
           </div>
