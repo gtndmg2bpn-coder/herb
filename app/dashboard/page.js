@@ -1100,7 +1100,14 @@ export default function DashboardPage() {
                         <div style={{ fontWeight: 700, marginTop: 2, color: INK }}>{recipe.name}</div>
                         <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>
                           {recipe.kcal ?? '—'} kcal · {money(Math.round((costByRecipe[recipe.id] ?? 0) * 100 * (slot.portions ?? householdPortions)))}
-                          {slot.cooked_at ? <span style={{ color: '#3b7d3b', fontWeight: 700 }}> · Cooked ✓</span> : null}
+                          {slot.cooked_at ? (
+                            <span style={{ color: '#3b7d3b', fontWeight: 700 }}>
+                              {' '}· Cooked ✓
+                              {(slot.banked_fresh != null || slot.banked_freeze != null)
+                                ? ` · ${(slot.banked_fresh ?? 0) + (slot.banked_freeze ?? 0)} banked (${slot.banked_fresh ?? 0} fridge · ${slot.banked_freeze ?? 0} freezer)`
+                                : ''}
+                            </span>
+                          ) : null}
                         </div>
                         <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
                           <Link href={`/recipe/${recipe.id}`} style={{ fontSize: 9, fontWeight: 700, textDecoration: 'underline', color: INK }}>View</Link>
