@@ -4,6 +4,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { getBrowserClient } from '../../lib/supabaseBrowser';
+import { generatePlan } from '../../lib/generatePlan';
 
 // Editorial design tokens (match dashboard / spend / recipe book)
 const INK = '#2A2932';
@@ -71,6 +72,10 @@ export default function PlanPage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState(null);
 
+  const [seed, setSeed] = useState(1);
+  const [generating, setGenerating] = useState(false);
+  const [planResult, setPlanResult] = useState(null); // { rationale, slotsWritten }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -83,8 +88,10 @@ export default function PlanPage() {
       }
       const uid = session.user.id;
 
-      // The plan week is rolling 7 days from today (NOT Monday-based).
-      const start = isoDate(new Date());
+      // Monday-anchored week, matching the dashboard's window so generated slots show there.
+      const base = new Date();
+      base.setDate(base.getDate() - ((base.getDay() + 6) % 7));
+      const start = isoDate(base);
       const weekDays = Array.from({ length: 7 }, (_, i) => addDays(start, i));
 
       const { data: lots } = await supabase
@@ -153,6 +160,48 @@ export default function PlanPage() {
       setError(rpcError.message);
     } else {
       setSaved(true);
+    }
+  }
+
+  async function generateNow(useSeed) {
+    setGenerating(true);
+    setError(null);
+    setPlanResult(null);
+    try {
+      const supabase = getBrowserClient();
+      const constraints = {
+        meals_to_plan: mealsToPlan,
+        outs: outs,
+        batch_days: batchDays,
+        appetite: { avoid_meat: avoidMeat, cuisine: cuisine || null },
+        guests: guests.filter((g) => g.date && g.meal && g.count > 0),
+        household: 1,
+      };
+      const { error: saveErr } = await supabase.rpc('save_plan_constraints', {
+        p_week_start: weekStart, p_constraints: constraints,
+      });
+      if (saveErr) throw saveErr;
+  
+      const { data: inputs, error: readErr } = await supabase.rpc('get_plan_inputs', {
+        p_week_start: weekStart,
+      });
+      if (readErr) throw readErr;
+  
+      const result = generatePlan(inputs.constraints, inputs.inventory, inputs.recipes, {
+        weekStart, seed: useSeed,
+      });
+  
+      const { data: applied, error: applyErr } = await supabase.rpc('apply_generated_plan', {
+        p_week_start: weekStart, p_slots: result.slots,
+      });
+      if (applyErr) throw applyErr;
+  
+      setPlanResult({ rationale: result.rationale || [], slotsWritten: applied?.slots_written ?? 0 });
+      setSaved(true);
+    } catch (e) {
+      setError(e?.message || String(e));
+    } finally {
+      setGenerating(false);
     }
   }
 
@@ -435,8 +484,50 @@ export default function PlanPage() {
                 </button>
               </section>
 
-              {/* ── Save ──────────────────────────────────────────────── */}
+              {/* ── Generate & Save ──────────────────────────────────────────────── */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  disabled={generating}
+                  onClick={() => generateNow(seed)}
+                  style={{
+                    background: PINK,
+                    color: INK,
+                    border: 'none',
+                    borderRadius: 100,
+                    padding: '14px 32px',
+                    fontSize: 15,
+                    fontWeight: 700,
+                    fontFamily: 'inherit',
+                    cursor: 'pointer',
+                    opacity: generating ? 0.7 : 1,
+                  }}
+                >
+                  {generating ? 'Generating…' : 'Generate my plan'}
+                </button>
+
+                {planResult && (
+                  <button
+                    type="button"
+                    disabled={generating}
+                    onClick={() => { const n = seed + 1; setSeed(n); generateNow(n); }}
+                    style={{
+                      background: 'transparent',
+                      color: MUTED,
+                      border: `1px solid ${MUTED}`,
+                      borderRadius: 100,
+                      padding: '13px 31px',
+                      fontSize: 15,
+                      fontWeight: 700,
+                      fontFamily: 'inherit',
+                      cursor: 'pointer',
+                      opacity: generating ? 0.7 : 1,
+                    }}
+                  >
+                    Regenerate (different plan)
+                  </button>
+                )}
+
                 <button
                   type="button"
                   disabled={saving}
@@ -456,6 +547,7 @@ export default function PlanPage() {
                 >
                   {saving ? 'Saving…' : 'Save my week'}
                 </button>
+
                 {saved && (
                   <span style={{ fontSize: 14, fontWeight: 600, color: GREEN }}>
                     Your week&rsquo;s set — plan generation is coming soon.
@@ -465,6 +557,24 @@ export default function PlanPage() {
                   <span style={{ fontSize: 14, fontWeight: 600, color: '#C0392B' }}>{error}</span>
                 )}
               </div>
+
+              {/* ── Generate Result Panel ──────────────────────────────────────────────── */}
+              {planResult && (
+                <div style={{ ...cardStyle, marginTop: 12 }}>
+                  <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
+                    Planned — {planResult.slotsWritten} slots set for this week.
+                  </div>
+                  <Link href="/dashboard" style={{ display: 'inline-block', fontSize: 15, fontWeight: 600, color: INK, textDecoration: 'underline', marginBottom: 16 }}>
+                    View plan on dashboard →
+                  </Link>
+                  <ul style={{ margin: 0, paddingLeft: 20, color: MUTED, fontSize: 14, lineHeight: 1.6 }}>
+                    {planResult.rationale.map((r, i) => (
+                      <li key={i}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
             </div>
           </>
         )}
