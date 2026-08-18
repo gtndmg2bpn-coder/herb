@@ -20,9 +20,6 @@ function isoDate(date) { return date.toISOString().slice(0, 10); }
 function addDays(iso, days) { const d = new Date(`${iso}T00:00:00`); d.setDate(d.getDate() + days); return isoDate(d); }
 function dayLabel(iso) { return new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }); }
 
-const DAY_MODES = ['normal', 'busy', 'out'];
-const DAY_MODE_LABELS = { normal: 'Normal', busy: 'Busy', out: 'Out' };
-
 const cardStyle = {
   background: '#FFFFFF',
   border: `1px solid ${HAIRLINE}`,
@@ -61,13 +58,14 @@ export default function PlanPage() {
   const [days, setDays] = useState([]);
   const [freezerLots, setFreezerLots] = useState([]);
 
-  // Constraint state — exact model from the brief.
+  // Constraint state v2
+  const [mealsToPlan, setMealsToPlan] = useState(['dinner']);
+  const [outs, setOuts] = useState([]);           // array of { date, meal }
+  const [batchDays, setBatchDays] = useState([]); // array of date strings
   const [freezerFirst, setFreezerFirst] = useState(true);
-  const [dayMode, setDayMode] = useState({});
-  const [batchDay, setBatchDay] = useState(null);
   const [avoidMeat, setAvoidMeat] = useState(false);
   const [cuisine, setCuisine] = useState('');
-  const [guests, setGuests] = useState([]);
+  const [guests, setGuests] = useState([]);       // array of { date, meal, count }
 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -119,13 +117,8 @@ export default function PlanPage() {
     return () => { cancelled = true; };
   }, []);
 
-  function setMode(date, mode) {
-    setDayMode((current) => ({ ...current, [date]: mode }));
-    setSaved(false);
-  }
-
   function addGuest() {
-    setGuests((current) => [...current, { date: days[0], count: 1 }]);
+    setGuests((current) => [...current, { date: days[0], meal: mealsToPlan[0] || 'dinner', count: 1 }]);
     setSaved(false);
   }
 
@@ -143,12 +136,12 @@ export default function PlanPage() {
     setSaving(true);
     setError(null);
     const constraints = {
-      freezer_first: freezerFirst,
-      busy_days: days.filter((d) => (dayMode[d] || 'normal') === 'busy'),
-      batch_day: batchDay,
-      out_nights: days.filter((d) => (dayMode[d] || 'normal') === 'out'),
+      meals_to_plan: mealsToPlan,
+      outs: outs,
+      batch_days: batchDays,
       appetite: { avoid_meat: avoidMeat, cuisine: cuisine || null },
-      guests: guests.filter((g) => g.date && g.count > 0),
+      guests: guests.filter((g) => g.date && g.meal && g.count > 0),
+      household: 1,
     };
     const supabase = getBrowserClient();
     const { error: rpcError } = await supabase.rpc('save_plan_constraints', {
@@ -200,7 +193,29 @@ export default function PlanPage() {
             </header>
 
             <div style={{ display: 'grid', gap: 20 }}>
-              {/* ── 1 · Freezer first ─────────────────────────────────── */}
+              
+              {/* ── 1 · Plan which meals? (Scope) ─────────────────────── */}
+              <section style={cardStyle}>
+                <div style={eyebrowStyle}>Plan which meals?</div>
+                <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={mealsToPlan.includes('dinner')} readOnly style={{ accentColor: INK, width: 18, height: 18 }} />
+                    Dinner
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, color: MUTED, opacity: 0.6, cursor: 'not-allowed' }}>
+                    <input type="checkbox" disabled style={{ width: 18, height: 18 }} />
+                    Breakfast
+                    <span style={{ fontSize: 11, fontWeight: 700, background: HAIRLINE, padding: '2px 6px', borderRadius: 4, color: MUTED }}>COMING SOON</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, color: MUTED, opacity: 0.6, cursor: 'not-allowed' }}>
+                    <input type="checkbox" disabled style={{ width: 18, height: 18 }} />
+                    Lunch
+                    <span style={{ fontSize: 11, fontWeight: 700, background: HAIRLINE, padding: '2px 6px', borderRadius: 4, color: MUTED }}>COMING SOON</span>
+                  </label>
+                </div>
+              </section>
+
+              {/* ── 2 · Freezer first ─────────────────────────────────── */}
               <section style={cardStyle}>
                 <div style={eyebrowStyle}>Freezer first</div>
                 {freezerLots.length === 0 ? (
@@ -220,36 +235,45 @@ export default function PlanPage() {
                 <Toggle on={freezerFirst} onChange={(value) => { setFreezerFirst(value); setSaved(false); }} label="Use these up first" />
               </section>
 
-              {/* ── 2 · Your week ─────────────────────────────────────── */}
+              {/* ── 3 · Your week ─────────────────────────────────────── */}
               <section style={cardStyle}>
                 <div style={eyebrowStyle}>Your week</div>
                 <div style={{ display: 'grid', gap: 10 }}>
                   {days.map((date) => {
-                    const mode = dayMode[date] || 'normal';
                     return (
                       <div key={date} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 15, fontWeight: 600, minWidth: 110 }}>{dayLabel(date)}</span>
                         <span style={{ display: 'inline-flex', background: CREAM, border: `1px solid ${HAIRLINE}`, borderRadius: 100, padding: 3 }}>
-                          {DAY_MODES.map((option) => (
-                            <button
-                              key={option}
-                              type="button"
-                              onClick={() => setMode(date, option)}
-                              style={{
-                                border: 'none',
-                                borderRadius: 100,
-                                padding: '7px 16px',
-                                fontSize: 13,
-                                fontWeight: 700,
-                                fontFamily: 'inherit',
-                                cursor: 'pointer',
-                                background: mode === option ? (option === 'busy' ? AMBER : option === 'out' ? BLUE : INK) : 'transparent',
-                                color: mode === option ? (option === 'normal' ? CREAM : INK) : MUTED,
-                              }}
-                            >
-                              {DAY_MODE_LABELS[option]}
-                            </button>
-                          ))}
+                          {mealsToPlan.map((meal) => {
+                            const isOut = outs.some(o => o.date === date && o.meal === meal);
+                            return (
+                              <button
+                                key={meal}
+                                type="button"
+                                onClick={() => {
+                                  if (isOut) {
+                                    setOuts(outs.filter(o => !(o.date === date && o.meal === meal)));
+                                  } else {
+                                    setOuts([...outs, { date, meal }]);
+                                  }
+                                  setSaved(false);
+                                }}
+                                style={{
+                                  border: 'none',
+                                  borderRadius: 100,
+                                  padding: '7px 16px',
+                                  fontSize: 13,
+                                  fontWeight: 700,
+                                  fontFamily: 'inherit',
+                                  cursor: 'pointer',
+                                  background: isOut ? BLUE : 'transparent',
+                                  color: isOut ? CREAM : MUTED,
+                                }}
+                              >
+                                Out for {meal}
+                              </button>
+                            );
+                          })}
                         </span>
                       </div>
                     );
@@ -257,35 +281,45 @@ export default function PlanPage() {
                 </div>
 
                 <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${HAIRLINE}` }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>Which day do you batch-cook?</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>Which days will you batch-cook?</div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {days.map((date) => (
-                      <button
-                        key={date}
-                        type="button"
-                        onClick={() => { setBatchDay(batchDay === date ? null : date); setSaved(false); }}
-                        style={{
-                          border: `1px solid ${batchDay === date ? INK : HAIRLINE}`,
-                          background: batchDay === date ? INK : '#fff',
-                          color: batchDay === date ? CREAM : INK,
-                          borderRadius: 100,
-                          padding: '8px 14px',
-                          fontSize: 13,
-                          fontWeight: 600,
-                          fontFamily: 'inherit',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {dayLabel(date)}
-                      </button>
-                    ))}
+                    {days.map((date) => {
+                      const isBatch = batchDays.includes(date);
+                      return (
+                        <button
+                          key={date}
+                          type="button"
+                          onClick={() => {
+                            if (isBatch) {
+                              setBatchDays(batchDays.filter((d) => d !== date));
+                            } else {
+                              setBatchDays([...batchDays, date]);
+                            }
+                            setSaved(false);
+                          }}
+                          style={{
+                            border: `1px solid ${isBatch ? INK : HAIRLINE}`,
+                            background: isBatch ? INK : '#fff',
+                            color: isBatch ? CREAM : INK,
+                            borderRadius: 100,
+                            padding: '8px 14px',
+                            fontSize: 13,
+                            fontWeight: 600,
+                            fontFamily: 'inherit',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {dayLabel(date)}
+                        </button>
+                      );
+                    })}
                     <button
                       type="button"
-                      onClick={() => { setBatchDay(null); setSaved(false); }}
+                      onClick={() => { setBatchDays([]); setSaved(false); }}
                       style={{
-                        border: `1px solid ${batchDay === null ? INK : HAIRLINE}`,
-                        background: batchDay === null ? INK : '#fff',
-                        color: batchDay === null ? CREAM : MUTED,
+                        border: `1px solid ${batchDays.length === 0 ? INK : HAIRLINE}`,
+                        background: batchDays.length === 0 ? INK : '#fff',
+                        color: batchDays.length === 0 ? CREAM : MUTED,
                         borderRadius: 100,
                         padding: '8px 14px',
                         fontSize: 13,
@@ -300,7 +334,7 @@ export default function PlanPage() {
                 </div>
               </section>
 
-              {/* ── 3 · This week's appetite ──────────────────────────── */}
+              {/* ── 4 · This week's appetite ──────────────────────────── */}
               <section style={cardStyle}>
                 <div style={eyebrowStyle}>This week&rsquo;s appetite</div>
                 <Toggle on={avoidMeat} onChange={(value) => { setAvoidMeat(value); setSaved(false); }} label="Off meat this week" />
@@ -319,7 +353,23 @@ export default function PlanPage() {
                 </div>
               </section>
 
-              {/* ── 4 · Guests ────────────────────────────────────────── */}
+              {/* ── 5 · Household Size ────────────────────────────────── */}
+              <section style={cardStyle}>
+                <div style={eyebrowStyle}>Household size</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, opacity: 0.6, cursor: 'not-allowed' }}>
+                  <select disabled style={{ ...inputStyle, background: '#fff', color: MUTED }}>
+                    <option>1 person</option>
+                    <option>2 people</option>
+                    <option>3 people</option>
+                    <option>4+ people</option>
+                  </select>
+                  <span style={{ fontSize: 11, fontWeight: 700, background: HAIRLINE, padding: '2px 6px', borderRadius: 4, color: MUTED }}>
+                    COMING SOON
+                  </span>
+                </div>
+              </section>
+
+              {/* ── 6 · Guests ────────────────────────────────────────── */}
               <section style={cardStyle}>
                 <div style={eyebrowStyle}>Guests</div>
                 {guests.length === 0 && (
@@ -335,6 +385,15 @@ export default function PlanPage() {
                       >
                         {days.map((date) => (
                           <option key={date} value={date}>{dayLabel(date)}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={guest.meal || mealsToPlan[0]}
+                        onChange={(event) => updateGuest(index, { meal: event.target.value })}
+                        style={{ ...inputStyle, background: '#fff', textTransform: 'capitalize' }}
+                      >
+                        {mealsToPlan.map((meal) => (
+                          <option key={meal} value={meal}>{meal}</option>
                         ))}
                       </select>
                       <input
