@@ -345,7 +345,7 @@ export default function DashboardPage() {
 
     const { data: recipeRows, error: recipesError } = await supabase
       .from('recipes')
-      .select('id, name, section, kcal, protein_g, carbs_g, fat_g, fibre_g, portions, image_id')
+      .select('id, name, section, kcal, protein_g, carbs_g, fat_g, fibre_g, portions, image_id, freezes, batch_portions, fresh_portions, fresh_shelf_days')
       .order('name');
     if (recipesError) throw recipesError;
 
@@ -1116,7 +1116,7 @@ export default function DashboardPage() {
                           {slot.cooked_at ? (
                             <ChipAction disabled={busy} onClick={() => eatSlot(slot)} colour={INK}>Eaten</ChipAction>
                           ) : (
-                            <ChipAction disabled={busy} onClick={() => setCookingSlot(slot)} colour={INK}>Cooked</ChipAction>
+                            <ChipAction disabled={busy} onClick={() => setCookingSlot({ ...slot, recipe })} colour={INK}>Cooked</ChipAction>
                           )}
                           <ChipAction disabled={busy} onClick={() => setEatingForm({ slotDate, meal, label: '', costPounds: '', kcal: '', proteinG: '', carbsG: '', fatG: '' })}>Eating out</ChipAction>
                         </div>
@@ -1410,6 +1410,9 @@ export default function DashboardPage() {
             <CookStepper
               slotDate={cookingSlot.slot_date}
               mealName={cookingSlot.meal}
+              freezes={cookingSlot.recipe?.freezes ?? true}
+              batchPortions={cookingSlot.recipe?.batch_portions ?? 4}
+              freshPortions={cookingSlot.recipe?.fresh_portions ?? 2}
               onSuccess={async () => { setCookingSlot(null); await refreshAfterAction(); }}
               onCancel={() => setCookingSlot(null)}
             />
