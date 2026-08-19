@@ -1,3 +1,4 @@
+// app/plan/page.js
 'use client';
 // app/plan/page.js
 
@@ -486,37 +487,19 @@ export default function PlanPage() {
 
               {/* ── Generate & Save ──────────────────────────────────────────────── */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  disabled={generating}
-                  onClick={() => generateNow(seed)}
-                  style={{
-                    background: PINK,
-                    color: INK,
-                    border: 'none',
-                    borderRadius: 100,
-                    padding: '14px 32px',
-                    fontSize: 15,
-                    fontWeight: 700,
-                    fontFamily: 'inherit',
-                    cursor: 'pointer',
-                    opacity: generating ? 0.7 : 1,
-                  }}
-                >
-                  {generating ? 'Generating…' : 'Generate my plan'}
-                </button>
-
-                {planResult && (
+                {/* KIMI NOTE: one primary slot per brief — before a plan exists it generates;
+                    once planResult is set the same slot saves, and regenerate stays secondary. */}
+                {!planResult ? (
                   <button
                     type="button"
                     disabled={generating}
-                    onClick={() => { const n = seed + 1; setSeed(n); generateNow(n); }}
+                    onClick={() => generateNow(seed)}
                     style={{
-                      background: 'transparent',
-                      color: MUTED,
-                      border: `1px solid ${MUTED}`,
+                      background: PINK,
+                      color: INK,
+                      border: 'none',
                       borderRadius: 100,
-                      padding: '13px 31px',
+                      padding: '14px 32px',
                       fontSize: 15,
                       fontWeight: 700,
                       fontFamily: 'inherit',
@@ -524,29 +507,51 @@ export default function PlanPage() {
                       opacity: generating ? 0.7 : 1,
                     }}
                   >
-                    Regenerate (different plan)
+                    {generating ? 'Generating…' : 'Generate my plan'}
                   </button>
-                )}
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={save}
+                      style={{
+                        background: PINK,
+                        color: INK,
+                        border: 'none',
+                        borderRadius: 100,
+                        padding: '14px 32px',
+                        fontSize: 15,
+                        fontWeight: 700,
+                        fontFamily: 'inherit',
+                        cursor: 'pointer',
+                        opacity: saving ? 0.7 : 1,
+                      }}
+                    >
+                      {saving ? 'Saving…' : 'Save this week'}
+                    </button>
 
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={save}
-                  style={{
-                    background: PINK,
-                    color: INK,
-                    border: 'none',
-                    borderRadius: 100,
-                    padding: '14px 32px',
-                    fontSize: 15,
-                    fontWeight: 700,
-                    fontFamily: 'inherit',
-                    cursor: 'pointer',
-                    opacity: saving ? 0.7 : 1,
-                  }}
-                >
-                  {saving ? 'Saving…' : 'Save my week'}
-                </button>
+                    <button
+                      type="button"
+                      disabled={generating}
+                      onClick={() => { const n = seed + 1; setSeed(n); generateNow(n); }}
+                      style={{
+                        background: 'transparent',
+                        color: MUTED,
+                        border: `1px solid ${MUTED}`,
+                        borderRadius: 100,
+                        padding: '9px 18px',
+                        fontSize: 13,
+                        fontWeight: 700,
+                        fontFamily: 'inherit',
+                        cursor: 'pointer',
+                        opacity: generating ? 0.7 : 1,
+                      }}
+                    >
+                      Regenerate (different plan)
+                    </button>
+                  </>
+                )}
 
                 {saved && (
                   <span style={{ fontSize: 14, fontWeight: 600, color: GREEN }}>
