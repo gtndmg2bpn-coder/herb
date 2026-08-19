@@ -5,9 +5,27 @@ import { getBrowserClient } from '../lib/supabaseBrowser';
 
 const supabase = getBrowserClient();
 
-export function CookStepper({ slotDate, mealName, onSuccess, onCancel }) {
-  const [fresh, setFresh] = useState(2);
-  const [freeze, setFreeze] = useState(2);
+// Per-recipe cook rules drive the opening split.
+//   freezes        — can the finished dish be frozen at all
+//   batchPortions  — how many portions to cook in one go
+//   freshPortions  — of that cook, how many are for eating fresh
+// Derived freeze = batchPortions - freshPortions (0 when the dish doesn't freeze).
+// Props are optional; if a caller omits them we fall back to the old flat 2/2
+// so nothing that renders this without rules can break.
+export function CookStepper({
+  slotDate,
+  mealName,
+  onSuccess,
+  onCancel,
+  freezes = true,
+  batchPortions = 4,
+  freshPortions = 2,
+}) {
+  const initialFresh = Math.max(0, freshPortions);
+  const initialFreeze = freezes ? Math.max(0, batchPortions - freshPortions) : 0;
+
+  const [fresh, setFresh] = useState(initialFresh);
+  const [freeze, setFreeze] = useState(initialFreeze);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -19,7 +37,7 @@ export function CookStepper({ slotDate, mealName, onSuccess, onCancel }) {
         p_slot_date: slotDate,
         p_meal: mealName,
         p_fresh: fresh,
-        p_freeze: freeze,
+        p_freeze: freezes ? freeze : 0,
       });
 
       if (rpcError) {
@@ -36,6 +54,14 @@ export function CookStepper({ slotDate, mealName, onSuccess, onCancel }) {
     } finally {
       setBusy(false);
     }
+  };
+
+  const stepBtn = {
+    padding: '4px 12px',
+    borderRadius: 6,
+    border: '1px solid #ccc',
+    background: '#fff',
+    cursor: 'pointer',
   };
 
   return (
@@ -64,7 +90,7 @@ export function CookStepper({ slotDate, mealName, onSuccess, onCancel }) {
               type="button"
               onClick={() => setFresh((prev) => Math.max(0, prev - 1))}
               disabled={busy}
-              style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid #ccc', background: '#fff', cursor: 'pointer' }}
+              style={stepBtn}
             >
               -
             </button>
@@ -73,35 +99,41 @@ export function CookStepper({ slotDate, mealName, onSuccess, onCancel }) {
               type="button"
               onClick={() => setFresh((prev) => prev + 1)}
               disabled={busy}
-              style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid #ccc', background: '#fff', cursor: 'pointer' }}
+              style={stepBtn}
             >
               +
             </button>
           </div>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 14 }}>Freeze portions to bank:</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button
-              type="button"
-              onClick={() => setFreeze((prev) => Math.max(0, prev - 1))}
-              disabled={busy}
-              style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid #ccc', background: '#fff', cursor: 'pointer' }}
-            >
-              -
-            </button>
-            <span style={{ minWidth: 20, textAlign: 'center', fontWeight: 600 }}>{freeze}</span>
-            <button
-              type="button"
-              onClick={() => setFreeze((prev) => prev + 1)}
-              disabled={busy}
-              style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid #ccc', background: '#fff', cursor: 'pointer' }}
-            >
-              +
-            </button>
+        {freezes ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 14 }}>Freeze portions to bank:</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => setFreeze((prev) => Math.max(0, prev - 1))}
+                disabled={busy}
+                style={stepBtn}
+              >
+                -
+              </button>
+              <span style={{ minWidth: 20, textAlign: 'center', fontWeight: 600 }}>{freeze}</span>
+              <button
+                type="button"
+                onClick={() => setFreeze((prev) => prev + 1)}
+                disabled={busy}
+                style={stepBtn}
+              >
+                +
+              </button>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div style={{ fontSize: 12, color: '#666', background: '#f7f7f7', padding: 8, borderRadius: 6 }}>
+            Best eaten fresh — this dish doesn&apos;t freeze, so it&apos;s cooked for the fridge only.
+          </div>
+        )}
       </div>
 
       {error && (
