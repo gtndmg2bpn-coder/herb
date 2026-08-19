@@ -99,7 +99,7 @@ export default function PlanPage() {
         .from('pantry_lots')
         .select('recipe_id, quantity, expiry_date')
         .eq('user_id', uid).eq('item_kind', 'recipe').eq('location', 'freezer');
-      const { data: recipeRows } = await supabase.from('recipes').select('id, name');
+      const { data: recipeRows } = await supabase.from('recipes').select('id, name, protein_type, freezes, batch_portions, fresh_portions, fresh_shelf_days');
 
       if (cancelled) return;
 
