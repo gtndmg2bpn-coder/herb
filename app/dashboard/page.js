@@ -1,3 +1,4 @@
+// app/dashboard/page.js
 'use client';
 // app/dashboard/page.js
 
@@ -1206,11 +1207,21 @@ export default function DashboardPage() {
       {/* ── Pantry: appliance cards ─────────────────────────────────── */}
       <section>
         <h2 style={{ fontWeight: 800, fontSize: 24, letterSpacing: '-.03em', margin: '0 0 18px' }}>Pantry</h2>
-        <div className="dash-pantry" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-          {LOCATIONS.map((location) => {
-            const locStyle = LOCATION_STYLES[location];
-            const rows = pantryStock.filter((row) => row.location === location);
-            return (
+        {/* KIMI NOTE: two labelled groups per brief, partitioned in render from the
+            already-fetched pantryStock — no fetch/query changes. "Ingredients" is a
+            catch-all for anything that isn't a cooked portion so no row can ever
+            vanish from the UI. */}
+        {[
+          { kind: 'cooked_portion', title: 'Cooked meals' },
+          { kind: 'ingredient', title: 'Ingredients' },
+        ].map((group, groupIndex) => (
+          <div key={group.kind} style={{ marginTop: groupIndex === 0 ? 0 : 24 }}>
+            <h3 style={{ fontWeight: 800, fontSize: 18, letterSpacing: '-.02em', margin: '0 0 12px' }}>{group.title}</h3>
+            <div className="dash-pantry" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+              {LOCATIONS.map((location) => {
+                const locStyle = LOCATION_STYLES[location];
+                const rows = pantryStock.filter((row) => row.location === location && (group.kind === 'cooked_portion' ? row.item_kind === 'cooked_portion' : row.item_kind !== 'cooked_portion'));
+                return (
               <div key={location} style={{ background: '#fff', border: `1px solid ${HAIRLINE}`, borderRadius: 20, padding: 20, overflow: 'hidden' }}>
                 {/* Appliance graphic: door seam + handles + shelves */}
                 <div style={{ position: 'relative', height: 92, borderRadius: '20px 20px 0 0', background: locStyle.wash, margin: '-20px -20px 16px' }}>
@@ -1253,9 +1264,11 @@ export default function DashboardPage() {
                   }) : <p style={{ color: MUTED, margin: '4px 0', fontSize: 13 }}>No stock.</p>}
                 </div>
               </div>
-            );
-          })}
-        </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
 
         {/* Add stock */}
         <div style={{ background: '#fff', border: `1px solid ${HAIRLINE}`, borderRadius: 20, padding: 24, marginTop: 16, display: 'grid', gap: 12 }}>
