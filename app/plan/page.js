@@ -99,7 +99,7 @@ export default function PlanPage() {
         .from('pantry_lots')
         .select('recipe_id, quantity, expiry_date')
         .eq('user_id', uid).eq('item_kind', 'recipe').eq('location', 'freezer');
-      const { data: recipeRows } = await supabase.from('recipes').select('id, name, protein_type, freezes, batch_portions, fresh_portions, fresh_shelf_days');
+      const { data: recipeRows } = await supabase.from('recipes').select('id, name, protein_type, meal_type, meal_types, freezes, batch_portions, fresh_portions, fresh_shelf_days');
 
       if (cancelled) return;
 
@@ -124,6 +124,11 @@ export default function PlanPage() {
     load();
     return () => { cancelled = true; };
   }, []);
+
+  function toggleMeal(m) {
+    setMealsToPlan((cur) => (cur.includes(m) ? cur.filter((x) => x !== m) : [...cur, m]));
+    setSaved(false);
+  }
 
   function addGuest() {
     setGuests((current) => [...current, { date: days[0], meal: mealsToPlan[0] || 'dinner', count: 1 }]);
@@ -249,18 +254,16 @@ export default function PlanPage() {
                 <div style={eyebrowStyle}>Plan which meals?</div>
                 <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={mealsToPlan.includes('dinner')} readOnly style={{ accentColor: INK, width: 18, height: 18 }} />
-                    Dinner
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, color: MUTED, opacity: 0.6, cursor: 'not-allowed' }}>
-                    <input type="checkbox" disabled style={{ width: 18, height: 18 }} />
+                    <input type="checkbox" checked={mealsToPlan.includes('breakfast')} onChange={() => toggleMeal('breakfast')} style={{ accentColor: INK, width: 18, height: 18 }} />
                     Breakfast
-                    <span style={{ fontSize: 11, fontWeight: 700, background: HAIRLINE, padding: '2px 6px', borderRadius: 4, color: MUTED }}>COMING SOON</span>
                   </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, color: MUTED, opacity: 0.6, cursor: 'not-allowed' }}>
-                    <input type="checkbox" disabled style={{ width: 18, height: 18 }} />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={mealsToPlan.includes('lunch')} onChange={() => toggleMeal('lunch')} style={{ accentColor: INK, width: 18, height: 18 }} />
                     Lunch
-                    <span style={{ fontSize: 11, fontWeight: 700, background: HAIRLINE, padding: '2px 6px', borderRadius: 4, color: MUTED }}>COMING SOON</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={mealsToPlan.includes('dinner')} onChange={() => toggleMeal('dinner')} style={{ accentColor: INK, width: 18, height: 18 }} />
+                    Dinner
                   </label>
                 </div>
               </section>
