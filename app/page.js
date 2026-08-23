@@ -1,592 +1,343 @@
-// app/plan/page.js
 'use client';
-// app/plan/page.js
+// app/page.js
+// Editorial homepage. Live recipes + costs from Supabase; hero and spotlight
+// photography from public/assets. Marketing copy is locked from the design
+// handoff — don't reinterpret.
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import { getBrowserClient } from '../../lib/supabaseBrowser';
-import { generatePlan } from '../../lib/generatePlan';
+import { useEffect, useMemo, useState } from 'react';
+import { getBrowserClient } from '../lib/supabaseBrowser';
+import { recipeImageUrl } from '../lib/recipeImage';
 
-// Editorial design tokens (match dashboard / spend / recipe book)
-const INK = '#2A2932';
-const CREAM = '#FBF7F1';
-const MUTED = '#5B5966';
-const HAIRLINE = '#E7DFD4';
-const PINK = '#E7A6B5';
-const BLUE = '#8FBBD6';
-const GREEN = '#7BB88F';
-const AMBER = '#E9C067';
-
-// Helpers copied verbatim from app/dashboard/page.js (local functions, not importable)
-function isoDate(date) { return date.toISOString().slice(0, 10); }
-function addDays(iso, days) { const d = new Date(`${iso}T00:00:00`); d.setDate(d.getDate() + days); return isoDate(d); }
-function dayLabel(iso) { return new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }); }
-
-const cardStyle = {
-  background: '#FFFFFF',
-  border: `1px solid ${HAIRLINE}`,
-  borderRadius: 20,
-  padding: '24px 28px',
+const WASHES = {
+  Breakfast: 'linear-gradient(155deg,#F1E7D5,#F7F0E2)',
+  'Pasta & Bowls': 'linear-gradient(155deg,#C8E6C9,#E8F5E9)',
+  Mains: 'linear-gradient(155deg,#D1C4E9,#EDE7F6)',
+  Salads: 'linear-gradient(155deg,#F3C6D0,#F8DDE3)',
+  Snacks: 'linear-gradient(155deg,#E9C067,#FFF3CD)',
 };
-const eyebrowStyle = {
-  fontSize: 12,
-  fontWeight: 700,
-  letterSpacing: '.14em',
-  textTransform: 'uppercase',
-  color: MUTED,
-  marginBottom: 12,
-};
+const DEFAULT_WASH = 'linear-gradient(155deg,#BCD7E9,#DCEBF3)';
 
-// Small pill toggle used for "Freezer first" and "Off meat".
-function Toggle({ on, onChange, label }) {
+const FAQS = [
+  { id: 1, q: 'Do I need to follow keto?', a: 'No — Herb works with any way of eating. Keto is just where the first recipe set started.' },
+  { id: 2, q: 'How is cost calculated?', a: 'From live UK grocery prices, rolled up per portion so you always know what a meal actually costs.' },
+  { id: 3, q: 'Can I use it for a household?', a: 'Yes — set your household portions once and every plan and shopping list scales to match.' },
+];
+
+function washFor(section) {
+  return WASHES[section] || DEFAULT_WASH;
+}
+
+function recipeImage(recipe) {
+  return recipeImageUrl(recipe?.image_id);
+}
+
+function RecipeCard({ recipe, cost }) {
+  const image = recipeImage(recipe);
   return (
-    <button
-      type="button"
-      onClick={() => onChange(!on)}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
-    >
-      <span style={{ width: 44, height: 24, borderRadius: 100, background: on ? GREEN : HAIRLINE, position: 'relative', transition: 'background .15s' }}>
-        <span style={{ position: 'absolute', top: 3, left: on ? 23 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left .15s' }} />
-      </span>
-      <span style={{ fontSize: 14, fontWeight: 600, color: INK }}>{label}</span>
-    </button>
+    <Link href={`/recipe/${recipe.id}`} style={{
+      background: '#fff', border: '1px solid #E7DFD4', borderRadius: 20,
+      overflow: 'hidden', display: 'flex', flexDirection: 'column',
+      textDecoration: 'none', color: 'inherit',
+    }}>
+      <div style={{
+        height: 200, position: 'relative', display: 'flex', alignItems: 'flex-end',
+        padding: 16, boxSizing: 'border-box',
+        background: image ? `url('${image}') center/cover` : washFor(recipe.section),
+      }}>
+        <span style={{
+          background: 'rgba(255,255,255,.85)', borderRadius: 100, fontSize: 11,
+          fontWeight: 700, letterSpacing: '.05em', padding: '6px 12px',
+          textTransform: 'uppercase', color: '#2A2932',
+        }}>
+          {recipe.section || 'Recipe'}
+        </span>
+      </div>
+      <div style={{ padding: 20, flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <h3 style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-.02em', lineHeight: 1.2, margin: 0 }}>{recipe.name}</h3>
+        <div style={{ display: 'flex', marginTop: 'auto', paddingTop: 14, borderTop: '1px solid #E7DFD4' }}>
+          <div style={{ flex: 1, textAlign: 'center', borderRight: '1px solid #E7DFD4' }}>
+            <b style={{ display: 'block', fontSize: 17, fontWeight: 800, letterSpacing: '-.02em' }}>{cost != null ? `£${Number(cost).toFixed(2)}` : '—'}</b>
+            <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em', color: '#5B5966', fontWeight: 600 }}>Cost</span>
+          </div>
+          <div style={{ flex: 1, textAlign: 'center', borderRight: '1px solid #E7DFD4' }}>
+            <b style={{ display: 'block', fontSize: 17, fontWeight: 800, letterSpacing: '-.02em' }}>{recipe.protein_g ?? '—'}g</b>
+            <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em', color: '#5B5966', fontWeight: 600 }}>Protein</span>
+          </div>
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            <b style={{ display: 'block', fontSize: 17, fontWeight: 800, letterSpacing: '-.02em' }}>{recipe.kcal ?? '—'}</b>
+            <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em', color: '#5B5966', fontWeight: 600 }}>kcal</span>
+          </div>
+        </div>
+      </div>
+    </Link>
   );
 }
 
-export default function PlanPage() {
-  const [loading, setLoading] = useState(true);
-  const [loggedOut, setLoggedOut] = useState(false);
-  const [weekStart, setWeekStart] = useState(null);
-  const [days, setDays] = useState([]);
-  const [freezerLots, setFreezerLots] = useState([]);
-
-  // Constraint state v2
-  const [mealsToPlan, setMealsToPlan] = useState(['dinner']);
-  const [outs, setOuts] = useState([]);           // array of { date, meal }
-  const [batchDays, setBatchDays] = useState([]); // array of date strings
-  const [freezerFirst, setFreezerFirst] = useState(true);
-  const [avoidMeat, setAvoidMeat] = useState(false);
-  const [cuisine, setCuisine] = useState('');
-  const [guests, setGuests] = useState([]);       // array of { date, meal, count }
-
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState(null);
-
-  const [seed, setSeed] = useState(1);
-  const [generating, setGenerating] = useState(false);
-  const [planResult, setPlanResult] = useState(null); // { rationale, slotsWritten }
+export default function HomePage() {
+  const [recipes, setRecipes] = useState([]);
+  const [costByRecipe, setCostByRecipe] = useState({});
+  const [category, setCategory] = useState('All');
+  const [query, setQuery] = useState('');
+  const [faqOpen, setFaqOpen] = useState({});
 
   useEffect(() => {
-    let cancelled = false;
-
+    let alive = true;
     async function load() {
       const supabase = getBrowserClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        if (!cancelled) { setLoggedOut(true); setLoading(false); }
-        return;
-      }
-      const uid = session.user.id;
-
-      // Monday-anchored week, matching the dashboard's window so generated slots show there.
-      const base = new Date();
-      base.setDate(base.getDate() - ((base.getDay() + 6) % 7));
-      const start = isoDate(base);
-      const weekDays = Array.from({ length: 7 }, (_, i) => addDays(start, i));
-
-      const { data: lots } = await supabase
-        .from('pantry_lots')
-        .select('recipe_id, quantity, expiry_date')
-        .eq('user_id', uid).eq('item_kind', 'recipe').eq('location', 'freezer');
-      const { data: recipeRows } = await supabase.from('recipes').select('id, name, protein_type, meal_type, meal_types, freezes, batch_portions, fresh_portions, fresh_shelf_days');
-
-      if (cancelled) return;
-
-      const nameById = {};
-      for (const recipe of recipeRows || []) nameById[recipe.id] = recipe.name;
-
-      // KIMI NOTE: "due within ~14 days" is read as expiry_date present and
-      // on/before today + 14. Already-overdue lots are included (they are the
-      // most due of all); lots with no expiry_date are left off the list.
-      const useByLimit = addDays(start, 14);
-      const dueLots = (lots || [])
-        .filter((lot) => lot.expiry_date && lot.expiry_date <= useByLimit)
-        .map((lot) => ({ ...lot, recipeName: nameById[lot.recipe_id] || 'A recipe' }))
-        .sort((a, b) => (a.expiry_date < b.expiry_date ? -1 : 1));
-
-      setWeekStart(start);
-      setDays(weekDays);
-      setFreezerLots(dueLots);
-      setLoading(false);
+      const { data: recipeRows } = await supabase
+        .from('recipes')
+        .select('id, name, section, kcal, protein_g, image_id')
+        .order('name');
+      const { data: costRows } = await supabase
+        .from('recipe_costs')
+        .select('recipe_id, cost_gbp');
+      if (!alive) return;
+      setRecipes(recipeRows || []);
+      setCostByRecipe(Object.fromEntries((costRows || []).map((row) => [row.recipe_id, row.cost_gbp])));
     }
-
     load();
-    return () => { cancelled = true; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  function toggleMeal(m) {
-    setMealsToPlan((cur) => (cur.includes(m) ? cur.filter((x) => x !== m) : [...cur, m]));
-    setSaved(false);
-  }
+  const categories = useMemo(
+    () => ['All', ...new Set(recipes.map((recipe) => recipe.section).filter(Boolean))],
+    [recipes]
+  );
 
-  function addGuest() {
-    setGuests((current) => [...current, { date: days[0], meal: mealsToPlan[0] || 'dinner', count: 1 }]);
-    setSaved(false);
-  }
-
-  function updateGuest(index, patch) {
-    setGuests((current) => current.map((guest, i) => (i === index ? { ...guest, ...patch } : guest)));
-    setSaved(false);
-  }
-
-  function removeGuest(index) {
-    setGuests((current) => current.filter((_, i) => i !== index));
-    setSaved(false);
-  }
-
-  async function save() {
-    setSaving(true);
-    setError(null);
-    const constraints = {
-      meals_to_plan: mealsToPlan,
-      outs: outs,
-      batch_days: batchDays,
-      appetite: { avoid_meat: avoidMeat, cuisine: cuisine || null },
-      guests: guests.filter((g) => g.date && g.meal && g.count > 0),
-      household: 1,
-    };
-    const supabase = getBrowserClient();
-    const { error: rpcError } = await supabase.rpc('save_plan_constraints', {
-      p_week_start: weekStart,
-      p_constraints: constraints,
-    });
-    setSaving(false);
-    if (rpcError) {
-      setError(rpcError.message);
-    } else {
-      setSaved(true);
+  // Idle (All + no search) shows one pick per category as a preview.
+  // Searching or choosing a category shows every matching recipe.
+  const visibleRecipes = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const filtering = q !== '' || category !== 'All';
+    if (filtering) {
+      return recipes.filter(
+        (recipe) =>
+          (category === 'All' || recipe.section === category) &&
+          (q === '' || (recipe.name || '').toLowerCase().includes(q))
+      );
     }
-  }
-
-  async function generateNow(useSeed) {
-    setGenerating(true);
-    setError(null);
-    setPlanResult(null);
-    try {
-      const supabase = getBrowserClient();
-      const constraints = {
-        meals_to_plan: mealsToPlan,
-        outs: outs,
-        batch_days: batchDays,
-        appetite: { avoid_meat: avoidMeat, cuisine: cuisine || null },
-        guests: guests.filter((g) => g.date && g.meal && g.count > 0),
-        household: 1,
-      };
-      const { error: saveErr } = await supabase.rpc('save_plan_constraints', {
-        p_week_start: weekStart, p_constraints: constraints,
-      });
-      if (saveErr) throw saveErr;
-  
-      const { data: inputs, error: readErr } = await supabase.rpc('get_plan_inputs', {
-        p_week_start: weekStart,
-      });
-      if (readErr) throw readErr;
-  
-      const result = generatePlan(inputs.constraints, inputs.inventory, inputs.recipes, {
-        weekStart, seed: useSeed,
-      });
-  
-      const { data: applied, error: applyErr } = await supabase.rpc('apply_generated_plan', {
-        p_week_start: weekStart, p_slots: result.slots,
-      });
-      if (applyErr) throw applyErr;
-  
-      setPlanResult({ rationale: result.rationale || [], slotsWritten: applied?.slots_written ?? 0 });
-      setSaved(true);
-    } catch (e) {
-      setError(e?.message || String(e));
-    } finally {
-      setGenerating(false);
+    const seen = new Set();
+    const picks = [];
+    for (const recipe of recipes) {
+      const key = recipe.section || recipe.id;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      picks.push(recipe);
+      if (picks.length >= 6) break;
     }
-  }
+    return picks;
+  }, [recipes, category, query]);
 
-  const inputStyle = {
-    border: `1px solid ${HAIRLINE}`,
-    background: CREAM,
-    color: INK,
-    borderRadius: 12,
-    padding: '10px 14px',
-    fontSize: 14,
-    fontFamily: 'inherit',
-  };
+  // Dish of the week: the salmon recipe if it's in the book (its photography
+  // ships in public/assets), otherwise the first recipe with an image.
+  const spotlight = useMemo(() => {
+    const salmon = recipes.find((recipe) => /salmon/i.test(recipe.name));
+    if (salmon) return { recipe: salmon, image: '/assets/salmon-celeriac.jpg' };
+    const withImage = recipes.find((recipe) => recipe.image_id);
+    if (withImage) return { recipe: withImage, image: recipeImage(withImage) };
+    return null;
+  }, [recipes]);
 
   return (
-    <main style={{ background: CREAM, minHeight: '100vh', color: INK }}>
-      <div style={{ maxWidth: 860, margin: '0 auto', padding: '32px 20px 64px' }}>
-        <Link href="/dashboard" style={{ fontSize: 13, fontWeight: 600, color: MUTED, textDecoration: 'none' }}>
-          ← Dashboard
-        </Link>
+    <main style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px' }}>
+      <header className="rise" style={{ margin: '0 -24px', position: 'relative', overflow: 'hidden', borderRadius: '0 0 26px 26px' }}>
+        <div style={{
+          position: 'relative', height: 640, display: 'flex', alignItems: 'center',
+          backgroundImage: "url('/assets/tbone-pak-choi.jpg')", backgroundSize: 'cover', backgroundPosition: 'center',
+        }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg,rgba(251,247,241,.95) 0%,rgba(251,247,241,.85) 38%,rgba(251,247,241,.15) 62%,rgba(251,247,241,0) 78%)' }} />
+          <div style={{ position: 'relative', padding: '0 48px', maxWidth: 900 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: '.16em', textTransform: 'uppercase', color: '#2A2932', marginBottom: 22 }}>
+              Fresh, cost-aware, no compromise
+            </div>
+            <h1 style={{ fontWeight: 800, fontSize: 'clamp(40px,8.5vw,86px)', lineHeight: .98, letterSpacing: '-.035em', maxWidth: '14ch', margin: 0 }}>
+              Eat <em style={{ fontFamily: 'var(--font-newsreader),Georgia,serif', fontStyle: 'italic', fontWeight: 500, color: '#E7A6B5' }}>well</em>, even when life doesn&rsquo;t go to plan.
+            </h1>
+            <p style={{ marginTop: 24, maxWidth: '48ch', fontSize: 'clamp(16px,2.2vw,19px)', color: '#5B5966', fontWeight: 500 }}>
+              Herb plans your week, tracks the macros and the cost, and rebalances when life gets in the way. Food, health and culture — not a diet.
+            </p>
+            <div style={{ display: 'flex', gap: 14, marginTop: 34, flexWrap: 'wrap' }}>
+              <a href="#recipes" style={{ background: '#2A2932', color: '#FBF7F1', border: 'none', fontWeight: 700, fontSize: 15, borderRadius: 100, padding: '15px 28px', textDecoration: 'none', display: 'inline-block' }}>Browse recipes</a>
+              <Link href="/about" style={{ background: 'transparent', color: '#2A2932', border: '1.5px solid #2A2932', fontWeight: 700, fontSize: 15, borderRadius: 100, padding: '15px 28px', textDecoration: 'none', display: 'inline-block' }}>What is Herb</Link>
+            </div>
+          </div>
+        </div>
+      </header>
 
-        {loading ? (
-          <div style={{ ...cardStyle, marginTop: 24, color: MUTED, fontSize: 14 }}>Loading your week…</div>
-        ) : loggedOut ? (
-          <div style={{ ...cardStyle, marginTop: 24 }}>
-            <div style={eyebrowStyle}>Plan my week</div>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>Sign in to plan your week.</div>
+      <section id="what-is-herb" style={{ padding: '70px 0 10px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 30, gap: 20, flexWrap: 'wrap' }}>
+          <h2 style={{ fontWeight: 800, fontSize: 'clamp(26px,4vw,40px)', letterSpacing: '-.03em', margin: 0 }}>Why Herb</h2>
+          <p style={{ fontSize: 14, color: '#5B5966', maxWidth: '34ch', margin: 0 }}>Food, health and culture — built around real cooking, not restriction.</p>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 18 }}>
+          <div style={{ background: '#fff', border: '1px solid #E7DFD4', borderRadius: 20, padding: 24 }}>
+            <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-.02em' }}>Real macros &amp; cost</div>
+            <div style={{ fontSize: 14, color: '#5B5966', marginTop: 8, lineHeight: 1.5 }}>Per-portion nutrition and price, rolled up live — no guessing what dinner actually costs.</div>
+          </div>
+          <div style={{ background: '#fff', border: '1px solid #E7DFD4', borderRadius: 20, padding: 24 }}>
+            <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-.02em' }}>Weekly meal plans</div>
+            <div style={{ fontSize: 14, color: '#5B5966', marginTop: 8, lineHeight: 1.5 }}>Plan the week, swap a meal in a tap, mark a night out — the plan bends without breaking.</div>
+          </div>
+          <div style={{ background: '#fff', border: '1px solid #E7DFD4', borderRadius: 20, padding: 24 }}>
+            <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-.02em' }}>Pantry-aware</div>
+            <div style={{ fontSize: 14, color: '#5B5966', marginTop: 8, lineHeight: 1.5 }}>Herb knows what&rsquo;s in your fridge and what&rsquo;s about to turn, before you shop again.</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="recipes" style={{ padding: '70px 0 10px' }}>
+        {spotlight ? (
+          <Link href={`/recipe/${spotlight.recipe.id}`} style={{
+            display: 'block', height: 340, position: 'relative', borderRadius: 26,
+            overflow: 'hidden', marginBottom: 30,
+            backgroundImage: `url('${spotlight.image}')`, backgroundSize: 'cover', backgroundPosition: 'center 30%',
+            textDecoration: 'none', color: 'inherit',
+          }}>
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg,rgba(251,247,241,.95) 0%,rgba(251,247,241,.75) 45%,rgba(251,247,241,0) 78%)' }} />
+            <div style={{ position: 'relative', padding: 40, maxWidth: 440 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: '.16em', textTransform: 'uppercase', color: '#8FBBD6', marginBottom: 14 }}>Dish of the week</div>
+              <h2 style={{ fontWeight: 800, fontSize: 38, letterSpacing: '-.03em', margin: 0, color: '#2A2932', lineHeight: 1.05 }}>{spotlight.recipe.name}</h2>
+              <p style={{ fontSize: 15, color: '#5B5966', marginTop: 12 }}>
+                {spotlight.recipe.kcal ?? '—'} kcal · {spotlight.recipe.protein_g ?? '—'}g protein
+                {costByRecipe[spotlight.recipe.id] != null ? ` · £${Number(costByRecipe[spotlight.recipe.id]).toFixed(2)}` : ''}
+              </p>
+            </div>
+          </Link>
+        ) : null}
+
+        <div style={{ background: '#fff', border: '1px solid #E7DFD4', borderRadius: 20, padding: '24px 32px', marginBottom: 30 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 20, flexWrap: 'wrap' }}>
+            <div>
+              <h2 style={{ fontWeight: 800, fontSize: 'clamp(28px,4.5vw,44px)', letterSpacing: '-.03em', margin: 0 }}>Recipes</h2>
+              <p style={{ fontSize: 14, color: '#5B5966', marginTop: 8 }}>Per-portion macros and cost, rolled up live from the database. One pick per category — pick a category to see more.</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 18 }}>
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search recipes…"
+            style={{ width: 260, maxWidth: '100%', border: '1px solid #E7DFD4', borderRadius: 100, padding: '12px 20px', fontSize: 14, background: '#fff', fontFamily: 'inherit', outline: 'none' }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 30 }}>
+          {categories.map((cat) => {
+            const active = category === cat;
+            return (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setCategory(cat)}
+                style={{
+                  background: active ? '#2A2932' : 'transparent',
+                  border: `1.5px solid ${active ? '#2A2932' : '#E7DFD4'}`,
+                  borderRadius: 100, padding: '8px 18px', fontSize: 13, fontWeight: 600,
+                  color: active ? '#FBF7F1' : '#5B5966', cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                {cat}
+              </button>
+            );
+          })}
+        </div>
+
+        {visibleRecipes.length > 0 ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 18 }}>
+            {visibleRecipes.map((recipe) => (
+              <RecipeCard key={recipe.id} recipe={recipe} cost={costByRecipe[recipe.id]} />
+            ))}
           </div>
         ) : (
-          <>
-            <header style={{ marginTop: 24, marginBottom: 28 }}>
-              <div style={{ ...eyebrowStyle, color: PINK }}>Plan my week</div>
-              <h1 style={{ fontSize: 36, fontWeight: 800, letterSpacing: '-.02em', margin: 0 }}>
-                {dayLabel(days[0])} — {dayLabel(days[6])}
-              </h1>
-              <div style={{ fontSize: 14, color: MUTED, marginTop: 6 }}>
-                Set this week&rsquo;s constraints. The plan itself is generated in a later step.
-              </div>
-            </header>
+          <div style={{ background: '#fff', border: '1px solid #E7DFD4', borderRadius: 20, padding: 60, textAlign: 'center', color: '#5B5966', fontSize: 15 }}>
+            {query ? `No recipes match \u201c${query}\u201d. Try another search or category.` : 'No recipes found.'}
+          </div>
+        )}
+      </section>
 
-            <div style={{ display: 'grid', gap: 20 }}>
-              
-              {/* ── 1 · Plan which meals? (Scope) ─────────────────────── */}
-              <section style={cardStyle}>
-                <div style={eyebrowStyle}>Plan which meals?</div>
-                <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={mealsToPlan.includes('breakfast')} onChange={() => toggleMeal('breakfast')} style={{ accentColor: INK, width: 18, height: 18 }} />
-                    Breakfast
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={mealsToPlan.includes('lunch')} onChange={() => toggleMeal('lunch')} style={{ accentColor: INK, width: 18, height: 18 }} />
-                    Lunch
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={mealsToPlan.includes('dinner')} onChange={() => toggleMeal('dinner')} style={{ accentColor: INK, width: 18, height: 18 }} />
-                    Dinner
-                  </label>
-                </div>
-              </section>
+      <section style={{ padding: '60px 0 0' }}>
+        <div style={{ background: 'linear-gradient(120deg,#BCD7E9 0%,#F3C6D0 100%)', borderRadius: 26, padding: 'clamp(36px,6vw,72px)' }}>
+          <p style={{ fontFamily: 'var(--font-newsreader),Georgia,serif', fontStyle: 'italic', fontWeight: 500, fontSize: 'clamp(24px,4vw,42px)', lineHeight: 1.2, letterSpacing: '-.01em', maxWidth: '24ch', color: '#2A2932', margin: 0 }}>
+            A plan that bends doesn&rsquo;t break. Out tonight? Herb rebalances tomorrow — no penance.
+          </p>
+          <div style={{ marginTop: 22, fontSize: 14, fontWeight: 700, letterSpacing: '.04em', color: '#5B5966' }}>— Takes the planning off your plate</div>
+        </div>
+      </section>
 
-              {/* ── 2 · Freezer first ─────────────────────────────────── */}
-              <section style={cardStyle}>
-                <div style={eyebrowStyle}>Freezer first</div>
-                {freezerLots.length === 0 ? (
-                  <div style={{ fontSize: 14, color: MUTED }}>No freezer portions to use up this week.</div>
-                ) : (
-                  <div style={{ display: 'grid', gap: 10, marginBottom: 16 }}>
-                    {freezerLots.map((lot, index) => (
-                      <div key={`${lot.recipe_id}-${index}`} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16 }}>
-                        <span style={{ fontSize: 15, fontWeight: 600 }}>{lot.recipeName}</span>
-                        <span style={{ fontSize: 13, color: MUTED, whiteSpace: 'nowrap' }}>
-                          {lot.quantity} portion{lot.quantity === 1 ? '' : 's'} · use by {dayLabel(lot.expiry_date)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <Toggle on={freezerFirst} onChange={(value) => { setFreezerFirst(value); setSaved(false); }} label="Use these up first" />
-              </section>
+      <section id="about" style={{ padding: '70px 0 10px' }}>
+        <div style={{ background: '#fff', border: '1px solid #E7DFD4', borderRadius: 24, padding: 'clamp(28px,4vw,48px)', display: 'flex', gap: 32, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 220, aspectRatio: '4/3', borderRadius: 18, background: 'linear-gradient(155deg,#F1E7D5,#F7F0E2)' }} />
+          <div style={{ flex: 1, minWidth: 260 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: '.16em', textTransform: 'uppercase', color: '#8FBBD6', marginBottom: 14 }}>Food, health, culture</div>
+            <h2 style={{ fontWeight: 800, fontSize: 'clamp(24px,3vw,32px)', letterSpacing: '-.03em', margin: 0 }}>Not a diet — a lifestyle</h2>
+            <p style={{ fontSize: 15, color: '#5B5966', marginTop: 14, lineHeight: 1.6 }}>
+              Herb is built around everyday cooking, real ingredients and honest cost — not restriction. We&rsquo;re a small team of home cooks who got tired of apps that treated food like a spreadsheet.
+            </p>
+          </div>
+        </div>
+      </section>
 
-              {/* ── 3 · Your week ─────────────────────────────────────── */}
-              <section style={cardStyle}>
-                <div style={eyebrowStyle}>Your week</div>
-                <div style={{ display: 'grid', gap: 10 }}>
-                  {days.map((date) => {
-                    return (
-                      <div key={date} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 15, fontWeight: 600, minWidth: 110 }}>{dayLabel(date)}</span>
-                        <span style={{ display: 'inline-flex', background: CREAM, border: `1px solid ${HAIRLINE}`, borderRadius: 100, padding: 3 }}>
-                          {mealsToPlan.map((meal) => {
-                            const isOut = outs.some(o => o.date === date && o.meal === meal);
-                            return (
-                              <button
-                                key={meal}
-                                type="button"
-                                onClick={() => {
-                                  if (isOut) {
-                                    setOuts(outs.filter(o => !(o.date === date && o.meal === meal)));
-                                  } else {
-                                    setOuts([...outs, { date, meal }]);
-                                  }
-                                  setSaved(false);
-                                }}
-                                style={{
-                                  border: 'none',
-                                  borderRadius: 100,
-                                  padding: '7px 16px',
-                                  fontSize: 13,
-                                  fontWeight: 700,
-                                  fontFamily: 'inherit',
-                                  cursor: 'pointer',
-                                  background: isOut ? BLUE : 'transparent',
-                                  color: isOut ? CREAM : MUTED,
-                                }}
-                              >
-                                Out for {meal}
-                              </button>
-                            );
-                          })}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${HAIRLINE}` }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>Which days will you batch-cook?</div>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {days.map((date) => {
-                      const isBatch = batchDays.includes(date);
-                      return (
-                        <button
-                          key={date}
-                          type="button"
-                          onClick={() => {
-                            if (isBatch) {
-                              setBatchDays(batchDays.filter((d) => d !== date));
-                            } else {
-                              setBatchDays([...batchDays, date]);
-                            }
-                            setSaved(false);
-                          }}
-                          style={{
-                            border: `1px solid ${isBatch ? INK : HAIRLINE}`,
-                            background: isBatch ? INK : '#fff',
-                            color: isBatch ? CREAM : INK,
-                            borderRadius: 100,
-                            padding: '8px 14px',
-                            fontSize: 13,
-                            fontWeight: 600,
-                            fontFamily: 'inherit',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {dayLabel(date)}
-                        </button>
-                      );
-                    })}
-                    <button
-                      type="button"
-                      onClick={() => { setBatchDays([]); setSaved(false); }}
-                      style={{
-                        border: `1px solid ${batchDays.length === 0 ? INK : HAIRLINE}`,
-                        background: batchDays.length === 0 ? INK : '#fff',
-                        color: batchDays.length === 0 ? CREAM : MUTED,
-                        borderRadius: 100,
-                        padding: '8px 14px',
-                        fontSize: 13,
-                        fontWeight: 600,
-                        fontFamily: 'inherit',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      None
-                    </button>
-                  </div>
-                </div>
-              </section>
-
-              {/* ── 4 · This week's appetite ──────────────────────────── */}
-              <section style={cardStyle}>
-                <div style={eyebrowStyle}>This week&rsquo;s appetite</div>
-                <Toggle on={avoidMeat} onChange={(value) => { setAvoidMeat(value); setSaved(false); }} label="Off meat this week" />
-                <div style={{ marginTop: 16 }}>
-                  <label htmlFor="cuisine" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: MUTED, marginBottom: 6 }}>
-                    Fancy a cuisine? <span style={{ fontWeight: 400 }}>(optional)</span>
-                  </label>
-                  <input
-                    id="cuisine"
-                    type="text"
-                    placeholder="e.g. Italian, Indian, Mexican…"
-                    value={cuisine}
-                    onChange={(event) => { setCuisine(event.target.value); setSaved(false); }}
-                    style={{ ...inputStyle, width: '100%', maxWidth: 320, background: '#fff' }}
-                  />
-                </div>
-              </section>
-
-              {/* ── 5 · Household Size ────────────────────────────────── */}
-              <section style={cardStyle}>
-                <div style={eyebrowStyle}>Household size</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, opacity: 0.6, cursor: 'not-allowed' }}>
-                  <select disabled style={{ ...inputStyle, background: '#fff', color: MUTED }}>
-                    <option>1 person</option>
-                    <option>2 people</option>
-                    <option>3 people</option>
-                    <option>4+ people</option>
-                  </select>
-                  <span style={{ fontSize: 11, fontWeight: 700, background: HAIRLINE, padding: '2px 6px', borderRadius: 4, color: MUTED }}>
-                    COMING SOON
-                  </span>
-                </div>
-              </section>
-
-              {/* ── 6 · Guests ────────────────────────────────────────── */}
-              <section style={cardStyle}>
-                <div style={eyebrowStyle}>Guests</div>
-                {guests.length === 0 && (
-                  <div style={{ fontSize: 14, color: MUTED, marginBottom: 12 }}>No guest nights this week.</div>
-                )}
-                <div style={{ display: 'grid', gap: 10 }}>
-                  {guests.map((guest, index) => (
-                    <div key={index} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                      <select
-                        value={guest.date}
-                        onChange={(event) => updateGuest(index, { date: event.target.value })}
-                        style={{ ...inputStyle, background: '#fff' }}
-                      >
-                        {days.map((date) => (
-                          <option key={date} value={date}>{dayLabel(date)}</option>
-                        ))}
-                      </select>
-                      <select
-                        value={guest.meal || mealsToPlan[0]}
-                        onChange={(event) => updateGuest(index, { meal: event.target.value })}
-                        style={{ ...inputStyle, background: '#fff', textTransform: 'capitalize' }}
-                      >
-                        {mealsToPlan.map((meal) => (
-                          <option key={meal} value={meal}>{meal}</option>
-                        ))}
-                      </select>
-                      <input
-                        type="number"
-                        min="1"
-                        value={guest.count}
-                        onChange={(event) => updateGuest(index, { count: Number(event.target.value) })}
-                        style={{ ...inputStyle, width: 80, background: '#fff' }}
-                        aria-label="Number of guests"
-                      />
-                      <span style={{ fontSize: 13, color: MUTED }}>guest{guest.count === 1 ? '' : 's'}</span>
-                      <button
-                        type="button"
-                        onClick={() => removeGuest(index)}
-                        style={{ border: 'none', background: 'none', color: MUTED, fontSize: 13, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer', fontFamily: 'inherit' }}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
+      <section id="faq" style={{ padding: '70px 0 10px' }}>
+        <h2 style={{ fontWeight: 800, fontSize: 'clamp(26px,4vw,40px)', letterSpacing: '-.03em', margin: '0 0 30px' }}>FAQ</h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {FAQS.map((faq) => {
+            const open = !!faqOpen[faq.id];
+            return (
+              <div key={faq.id} style={{ background: '#fff', border: '1px solid #E7DFD4', borderRadius: 14, overflow: 'hidden' }}>
                 <button
                   type="button"
-                  onClick={addGuest}
-                  style={{
-                    marginTop: 14,
-                    border: `1px solid ${HAIRLINE}`,
-                    background: '#fff',
-                    color: INK,
-                    borderRadius: 100,
-                    padding: '9px 18px',
-                    fontSize: 13,
-                    fontWeight: 700,
-                    fontFamily: 'inherit',
-                    cursor: 'pointer',
-                  }}
+                  onClick={() => setFaqOpen({ ...faqOpen, [faq.id]: !open })}
+                  style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 15, fontWeight: 600, color: '#2A2932', cursor: 'pointer', fontFamily: 'inherit' }}
                 >
-                  + Add guest night
+                  <span>{faq.q}</span><span>{open ? '−' : '+'}</span>
                 </button>
-              </section>
-
-              {/* ── Generate & Save ──────────────────────────────────────────────── */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-                {/* KIMI NOTE: one primary slot per brief — before a plan exists it generates;
-                    once planResult is set the same slot saves, and regenerate stays secondary. */}
-                {!planResult ? (
-                  <button
-                    type="button"
-                    disabled={generating}
-                    onClick={() => generateNow(seed)}
-                    style={{
-                      background: PINK,
-                      color: INK,
-                      border: 'none',
-                      borderRadius: 100,
-                      padding: '14px 32px',
-                      fontSize: 15,
-                      fontWeight: 700,
-                      fontFamily: 'inherit',
-                      cursor: 'pointer',
-                      opacity: generating ? 0.7 : 1,
-                    }}
-                  >
-                    {generating ? 'Generating…' : 'Generate my plan'}
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={save}
-                      style={{
-                        background: PINK,
-                        color: INK,
-                        border: 'none',
-                        borderRadius: 100,
-                        padding: '14px 32px',
-                        fontSize: 15,
-                        fontWeight: 700,
-                        fontFamily: 'inherit',
-                        cursor: 'pointer',
-                        opacity: saving ? 0.7 : 1,
-                      }}
-                    >
-                      {saving ? 'Saving…' : 'Save this week'}
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={generating}
-                      onClick={() => { const n = seed + 1; setSeed(n); generateNow(n); }}
-                      style={{
-                        background: 'transparent',
-                        color: MUTED,
-                        border: `1px solid ${MUTED}`,
-                        borderRadius: 100,
-                        padding: '9px 18px',
-                        fontSize: 13,
-                        fontWeight: 700,
-                        fontFamily: 'inherit',
-                        cursor: 'pointer',
-                        opacity: generating ? 0.7 : 1,
-                      }}
-                    >
-                      Regenerate (different plan)
-                    </button>
-                  </>
-                )}
-
-                {saved && (
-                  <span style={{ fontSize: 14, fontWeight: 600, color: GREEN }}>
-                    Your week&rsquo;s set — plan generation is coming soon.
-                  </span>
-                )}
-                {error && (
-                  <span style={{ fontSize: 14, fontWeight: 600, color: '#C0392B' }}>{error}</span>
-                )}
+                {open ? <div style={{ padding: '0 20px 18px', fontSize: 14, color: '#5B5966', lineHeight: 1.5 }}>{faq.a}</div> : null}
               </div>
+            );
+          })}
+        </div>
+      </section>
 
-              {/* ── Generate Result Panel ──────────────────────────────────────────────── */}
-              {planResult && (
-                <div style={{ ...cardStyle, marginTop: 12 }}>
-                  <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
-                    Planned — {planResult.slotsWritten} slots set for this week.
-                  </div>
-                  <Link href="/dashboard" style={{ display: 'inline-block', fontSize: 15, fontWeight: 600, color: INK, textDecoration: 'underline', marginBottom: 16 }}>
-                    View plan on dashboard →
-                  </Link>
-                  <ul style={{ margin: 0, paddingLeft: 20, color: MUTED, fontSize: 14, lineHeight: 1.6 }}>
-                    {planResult.rationale.map((r, i) => (
-                      <li key={i}>{r}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+      <section style={{ padding: '80px 0 30px', textAlign: 'center' }}>
+        <div style={{ fontWeight: 800, letterSpacing: '-.03em', lineHeight: 1, fontSize: 'clamp(46px,11vw,120px)' }}>
+          <span style={{ color: '#E7A6B5', fontSize: '1.35em', verticalAlign: '-.06em' }}>£</span>/<span style={{ color: '#8FBBD6' }}>lbs</span>
+        </div>
+        <p style={{ marginTop: 20, color: '#5B5966', fontSize: 16 }}>Herb looks after both — the money and the weight. Nobody else tracks the two together.</p>
+        <Link href="/signup" style={{ marginTop: 28, background: '#2A2932', color: '#FBF7F1', border: 'none', fontWeight: 700, fontSize: 15, borderRadius: 100, padding: '15px 28px', textDecoration: 'none', display: 'inline-block' }}>Sign up free</Link>
+      </section>
 
+      <footer id="blog" style={{ borderTop: '1px solid #E7DFD4', marginTop: 40, padding: '40px 0 50px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 32, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 140 }}>
+            <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 6 }}>HERB<span style={{ color: '#E7A6B5' }}>.</span></div>
+            <a href="#recipes" style={{ fontSize: 13, color: '#5B5966', textDecoration: 'none' }}>Recipes</a>
+            <Link href="/about" style={{ fontSize: 13, color: '#5B5966', textDecoration: 'none' }}>About</Link>
+            <a href="#what-is-herb" style={{ fontSize: 13, color: '#5B5966', textDecoration: 'none' }}>What is Herb</a>
+            <a href="#blog" style={{ fontSize: 13, color: '#5B5966', textDecoration: 'none' }}>Blog</a>
+            <a href="#faq" style={{ fontSize: 13, color: '#5B5966', textDecoration: 'none' }}>FAQ</a>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 140 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>Contact &amp; support</div>
+            <span style={{ fontSize: 13, color: '#5B5966' }}>help@herb.app</span>
+            <span style={{ fontSize: 13, color: '#5B5966' }}>Contact us</span>
+            <span style={{ fontSize: 13, color: '#5B5966' }}>Support centre</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 260, flex: 1, minWidth: 220 }}>
+            <div style={{ fontSize: 14, fontWeight: 700 }}>Get weekly recipe ideas</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input type="email" placeholder="you@example.com" style={{ flex: 1, border: '1px solid #E7DFD4', borderRadius: 12, padding: '10px 12px', fontSize: 13 }} />
+              <button type="button" style={{ background: '#2A2932', color: '#FBF7F1', border: 'none', borderRadius: 12, padding: '0 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Sign up</button>
             </div>
-          </>
-        )}
-      </div>
+          </div>
+        </div>
+        <div style={{ borderTop: '1px solid #E7DFD4', marginTop: 32, paddingTop: 20, fontSize: 13, color: '#5B5966' }}>HERB — cook smarter, eat well.</div>
+      </footer>
     </main>
   );
 }
