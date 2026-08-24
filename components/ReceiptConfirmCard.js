@@ -2,7 +2,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { addPantryItems } from '../lib/actions';
+import { addPantryItems, setIngredientPrice } from '../lib/actions';
 
 const LOCATIONS = ['fridge', 'freezer', 'cupboard'];
 
@@ -36,6 +36,27 @@ const smallButton = {
   cursor: 'pointer',
   fontFamily: 'inherit',
 };
+
+// Convert a receipt pack-size string ("650g", "1kg", "2L") into a plain number
+// expressed in the ingredient's own unit — the shape set_ingredient_price wants
+// (pack_size is a number in the ingredient's `unit`, e.g. 650 when unit is 'g').
+// Returns null when it can't convert safely, so the price-write is skipped rather
+// than writing a wrong per-unit basis. Same-family conversions only (g↔kg, ml↔l).
+const G = { g: 1, kg: 1000 };
+const ML = { ml: 1, cl: 10, l: 1000 };
+function packSizeToNumber(text, ingredientUnit) {
+  if (text == null) return null;
+  const m = String(text).trim().toLowerCase().match(/([0-9]*\.?[0-9]+)\s*([a-z]+)?/);
+  if (!m) return null;
+  const value = parseFloat(m[1]);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const from = m[2] || '';
+  const to = (ingredientUnit || '').toLowerCase();
+  if (!from || !to || from === to) return value;      // already in the right unit (or no unit info)
+  if (from in G && to in G) return (value * G[from]) / G[to];
+  if (from in ML && to in ML) return (value * ML[from]) / ML[to];
+  return null;                                          // cross-family / unknown → don't guess
+}
 
 function money(pence) {
   if (pence == null) return '—';
@@ -80,6 +101,28 @@ export function ReceiptConfirmCard({ proposal, ingredients = [], onCommitted, on
     [ingredients],
   );
 
+  const ingredientUnitById = useMemo(
+    () => Object.fromEntries((ingredients || []).map((ing) => [ing.id, ing.unit ?? null])),
+    [ingredients],
+  );
+
+  // Price-write args for a confirmed row, or null to skip it. Uses the CONFIRMED
+  // ingredient (so a REVIEW/UNMATCHED swap writes the right one) and only when the
+  // pack size resolves to the ingredient's unit. Skipping never blocks the commit.
+  const buildPriceArgs = (row) => {
+    if (!row.matchedIngredientId || row.packPricePence == null) return null;
+    const sizeText = (row.priceArgs && row.priceArgs.packSize) || row.pack_size || null;
+    const packSize = packSizeToNumber(sizeText, ingredientUnitById[row.matchedIngredientId]);
+    if (packSize == null) return null;
+    return {
+      ingredientId: row.matchedIngredientId,
+      pricePence: row.packPricePence,
+      packSize,
+      source: 'RECEIPT',
+      fetchedAt: proposal?.date ?? null,
+    };
+  };
+
   const updateRow = (index, patch) => {
     setRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   };
@@ -122,11 +165,20 @@ export function ReceiptConfirmCard({ proposal, ingredients = [], onCommitted, on
     setBusy(true);
     setResult(null);
     const { data, error } = await addPantryItems(committable.map(buildAddStockArgs));
-    setBusy(false);
     if (error) {
+      setBusy(false);
       setResult({ ok: false, message: error.message || 'Could not add those items.' });
       return;
     }
+
+    // Best-effort price-write. Stock is already banked, so a failed/skipped price
+    // update must never fail the commit — we settle all and ignore the outcomes.
+    const priceArgs = committable.map(buildPriceArgs).filter(Boolean);
+    if (priceArgs.length) {
+      await Promise.allSettled(priceArgs.map((args) => setIngredientPrice(args)));
+    }
+
+    setBusy(false);
     setCommitted(true);
     setResult({ ok: true, message: `Added ${committable.length} item${committable.length === 1 ? '' : 's'} to your pantry.` });
     if (onCommitted) onCommitted(data);
