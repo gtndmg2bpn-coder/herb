@@ -26,6 +26,16 @@ export const metadata = {
   description: 'Herb plans your week, tracks the macros and the cost, and rebalances when life gets in the way. Food, health and culture — not a diet.',
 };
 
+// THE mobile fix: without this, phones render the page at ~980px desktop width
+// and zoom out — tiny text, and the hero/spotlight overlays fall out of ratio
+// so text sits over the exposed image. This one export is the biggest single
+// mobile win and kills most of the "text bleeding into images" symptom.
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+};
+
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
