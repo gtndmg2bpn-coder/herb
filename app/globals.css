@@ -1,78 +1,12 @@
-/* app/globals.css — HERB Editorial design tokens */
+.herb-grid { display: grid; gap: 16px; }
 
-:root {
-  --cream: #FBF7F1;
-  --ink: #2A2932;
-  --ink-2: #3A3847;
-  --muted: #5B5966;
-  --hairline: #E7DFD4;
-  --pink: #E7A6B5;
-  --blue: #8FBBD6;
-  --sand-a: #F1E7D5;
-  --sand-b: #F7F0E2;
-  --green-a: #C8E6C9;
-  --green-b: #E8F5E9;
-  --blue-a: #BCD7E9;
-  --blue-b: #DCEBF3;
-  --pink-a: #F3C6D0;
-  --pink-b: #F8DDE3;
-  --purple-a: #D1C4E9;
-  --purple-b: #EDE7F6;
-  --orange-a: #FFAB91;
-  --orange-b: #FFCCBC;
-  --yellow-a: #E9C067;
-  --yellow-b: #FFF3CD;
+@media (max-width: 720px) {
+  .herb-grid { grid-template-columns: 1fr !important; }
+  .herb-hero-overlay { background: rgba(251,247,241,0.92) !important; }
 }
 
-* {
-  box-sizing: border-box;
-}
+.herb-grid-2 { display: grid; }
 
-body {
-  margin: 0;
-  background: var(--cream);
-  color: var(--ink);
-  font-family: var(--font-hanken), "Hanken Grotesk", system-ui, sans-serif;
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-}
-
-a {
-  color: var(--ink);
-}
-
-a:hover {
-  color: var(--pink);
-}
-
-input,
-select,
-button {
-  font-family: inherit;
-}
-
-input,
-select {
-  outline: none;
-}
-
-input:focus,
-select:focus {
-  border-color: var(--blue) !important;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .rise {
-    animation: rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
-  }
-  @keyframes rise {
-    from {
-      opacity: 0;
-      transform: translateY(16px);
-    }
-    to {
-      opacity: 1;
-      transform: none;
-    }
-  }
+@media (max-width: 720px) {
+  .herb-grid-2 { grid-template-columns: 1fr 1fr !important; }
 }
