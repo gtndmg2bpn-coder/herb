@@ -4,56 +4,11 @@
 import { useRef, useState } from 'react';
 import { ReceiptConfirmCard } from './ReceiptConfirmCard';
 
-const GREEN = '#3b7d3b';
 const MUTED = '#666';
 
-// Contract B sample (brief §4) — development stand-in so the UI can be verified
-// before the owner's vision route exists. Production: the Capture Bar fetches the
-// route and passes the real proposal + ingredient master in as props.
-const SAMPLE_PROPOSAL = {
-  status: 'PROPOSE',
-  store: 'Tesco',
-  date: '2026-08-19',
-  currency: 'GBP',
-  total: '£42.10',
-  lineCount: 3,
-  needsReview: 1,
-  lines: [
-    {
-      rawText: 'TESCO CKN BRST 650G',
-      match: { ingredientId: 'i-chick', name: 'Chicken breast', score: 0.85 },
-      status: 'PROPOSE',
-      reason: null,
-      quantity: 1,
-      unit: null,
-      packPricePence: 390,
-      alternatives: [],
-      addStockArgs: {
-        itemKind: 'ingredient', ingredientId: 'i-chick', label: 'Chicken breast',
-        quantity: 1, unit: null, location: null, costPence: 390, boughtDate: '2026-08-19',
-      },
-      priceArgs: {
-        ingredientId: 'i-chick', packPricePence: 390, packSize: '650g',
-        source: 'RECEIPT', fetchedAt: '2026-08-19',
-      },
-    },
-    {
-      rawText: 'MYSTERY ITEM 4U',
-      match: { ingredientId: null, name: null, score: 0 },
-      status: 'UNMATCHED',
-      reason: 'no confident match — pick the ingredient',
-      quantity: 1,
-      unit: null,
-      packPricePence: 999,
-      alternatives: [],
-      addStockArgs: null,
-      priceArgs: null,
-    },
-  ],
-};
-
-// KIMI NOTE: dev-only master so the UNMATCHED search has something to pick from.
-// The real master comes from the Capture Bar / page that renders this component.
+// Dev-only fallback so the UNMATCHED search has something to pick from if this
+// component is ever rendered without a real master. In the app, the capture page
+// loads the real ingredient master and passes it in.
 const SAMPLE_INGREDIENTS = [
   { id: 'i-chick', name: 'Chicken breast' },
   { id: 'i-salmon', name: 'Salmon fillet' },
@@ -62,7 +17,21 @@ const SAMPLE_INGREDIENTS = [
   { id: 'i-mince', name: 'Beef mince' },
 ];
 
-export function ReceiptCapture({ proposal = SAMPLE_PROPOSAL, ingredients = SAMPLE_INGREDIENTS, onCommitted }) {
+// Read a File into raw base64 (strips the "data:...;base64," prefix).
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      const comma = result.indexOf(',');
+      resolve(comma === -1 ? result : result.slice(comma + 1));
+    };
+    reader.onerror = () => reject(new Error('Could not read that image.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+export function ReceiptCapture({ ingredients = SAMPLE_INGREDIENTS, onCommitted }) {
   const fileInputRef = useRef(null);
   const [reading, setReading] = useState(false);
   const [activeProposal, setActiveProposal] = useState(null);
@@ -72,19 +41,39 @@ export function ReceiptCapture({ proposal = SAMPLE_PROPOSAL, ingredients = SAMPL
     if (fileInputRef.current) fileInputRef.current.click();
   };
 
-  const handleFile = (event) => {
+  const handleFile = async (event) => {
     const file = event.target.files && event.target.files[0];
     event.target.value = '';
     if (!file) return;
     setError(null);
+    setActiveProposal(null);
     setReading(true);
-    // KIMI NOTE: the fetch to the owner's vision route is deliberately NOT wired here
-    // (route + API key are owner-built). For development we show the reading state,
-    // then render the Contract B sample so the confirm card can be verified end-to-end.
-    window.setTimeout(() => {
-      setReading(false);
+    try {
+      const imageBase64 = await fileToBase64(file);
+      const response = await fetch('/api/receipt', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64,
+          mediaType: file.type || 'image/jpeg',
+          ingredients,
+        }),
+      });
+      const proposal = await response.json().catch(() => null);
+      if (!response.ok || !proposal) {
+        setError((proposal && proposal.reason) || 'Could not read that receipt. Try a clearer photo.');
+        return;
+      }
+      if (proposal.status === 'REJECT') {
+        setError(proposal.reason || 'No readable items on that receipt.');
+        return;
+      }
       setActiveProposal(proposal);
-    }, 700);
+    } catch (e) {
+      setError(e && e.message ? e.message : 'Something went wrong reading that receipt.');
+    } finally {
+      setReading(false);
+    }
   };
 
   return (
@@ -109,9 +98,10 @@ export function ReceiptCapture({ proposal = SAMPLE_PROPOSAL, ingredients = SAMPL
           padding: '10px 14px',
           fontSize: 14,
           fontWeight: 600,
-          cursor: 'pointer',
+          cursor: reading ? 'default' : 'pointer',
           textAlign: 'left',
           fontFamily: 'inherit',
+          opacity: reading ? 0.6 : 1,
         }}
       >
         Receipt photo
