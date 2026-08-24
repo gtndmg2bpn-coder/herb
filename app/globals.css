@@ -83,7 +83,13 @@ select:focus {
 
 @media (max-width: 720px) {
   .herb-grid { grid-template-columns: 1fr !important; }
-  .herb-hero-overlay { background: rgba(251,247,241,0.92) !important; }
+  /* soften, don't obliterate: photo still shows, dark text stays readable */
+  .herb-hero-overlay { background: rgba(251,247,241,0.80) !important; }
+  /* nav: hide the marketing links so the bar stops overflowing sideways */
+  .herb-nav-center { display: none !important; }
+  /* hero: no locked-tall height or heavy padding on a phone */
+  .herb-hero { height: auto !important; min-height: 440px; }
+  .herb-hero-inner { padding: 36px 24px !important; }
 }
 
 /* Four-up stat/KPI rows read better as 2x2 than a single tall column on phones. */
