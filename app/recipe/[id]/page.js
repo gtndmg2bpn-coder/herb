@@ -109,12 +109,16 @@ export default async function RecipeDetailPage({ params }) {
     (relCosts || []).forEach((c) => { relCostMap[c.recipe_id] = c.cost_gbp; });
   }
 
+  // Only show a macro bar when the recipe actually has a value for it, so
+  // unpopulated fields (currently fat/fibre) don't render as empty "0g" bars.
   const macros = [
-    { label: 'Protein', value: `${recipe.protein_g ?? 0}g`, pct: Math.min(100, ((recipe.protein_g ?? 0) / 50) * 100), color: '#E7A6B5' },
-    { label: 'Fat', value: `${recipe.fat_g ?? 0}g`, pct: Math.min(100, ((recipe.fat_g ?? 0) / 50) * 100), color: '#8FBBD6' },
-    { label: 'Net carbs', value: `${recipe.carbs_g ?? 0}g`, pct: Math.min(100, ((recipe.carbs_g ?? 0) / 50) * 100), color: '#E9C067' },
-    { label: 'Fibre', value: `${recipe.fibre_g ?? 0}g`, pct: Math.min(100, ((recipe.fibre_g ?? 0) / 15) * 100), color: '#C8E6C9' },
-  ];
+    { label: 'Protein', g: recipe.protein_g, scale: 50, color: '#E7A6B5' },
+    { label: 'Fat', g: recipe.fat_g, scale: 50, color: '#8FBBD6' },
+    { label: 'Net carbs', g: recipe.carbs_g, scale: 50, color: '#E9C067' },
+    { label: 'Fibre', g: recipe.fibre_g, scale: 15, color: '#C8E6C9' },
+  ]
+    .filter((m) => m.g != null && Number(m.g) > 0)
+    .map((m) => ({ label: m.label, value: `${m.g}g`, pct: Math.min(100, (Number(m.g) / m.scale) * 100), color: m.color }));
 
   const cell = { textAlign: 'center', borderRight: '1px solid #E7DFD4' };
   const cellLast = { textAlign: 'center' };
@@ -133,7 +137,7 @@ export default async function RecipeDetailPage({ params }) {
         </div>
 
         {/* Header */}
-        <header style={{ padding: '24px 0 10px', display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: 40, alignItems: 'start' }}>
+        <header className="herb-grid" style={{ padding: '24px 0 10px', display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: 40, alignItems: 'start' }}>
           {/* Hero image */}
           <div style={{
             height: 420, borderRadius: 24,
@@ -163,7 +167,7 @@ export default async function RecipeDetailPage({ params }) {
             )}
 
             {/* Stats strip — all real fields */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', marginTop: 26, background: '#fff', border: '1px solid #E7DFD4', borderRadius: 16, padding: '16px 0' }}>
+            <div className="herb-grid-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', marginTop: 26, background: '#fff', border: '1px solid #E7DFD4', borderRadius: 16, padding: '16px 0' }}>
               <div style={cell}>
                 <b style={bigNum}>{cost != null ? `£${Number(cost).toFixed(2)}` : '—'}</b>
                 <span style={capLabel}>Cost</span>
@@ -188,7 +192,7 @@ export default async function RecipeDetailPage({ params }) {
         </header>
 
         {/* Ingredients & Method */}
-        <section style={{ padding: '60px 0 10px', display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 48 }}>
+        <section className="herb-grid" style={{ padding: '60px 0 10px', display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 48 }}>
           <div>
             <h2 style={h2}>
               Ingredients{' '}
