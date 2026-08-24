@@ -1,4 +1,4 @@
-'use client';
+ 'use client';
 // app/page.js
 // Editorial homepage. Live recipes + costs from Supabase; hero and spotlight
 // photography from public/assets. Marketing copy is locked from the design
@@ -144,12 +144,12 @@ export default function HomePage() {
   return (
     <main style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px' }}>
       <header className="rise" style={{ margin: '0 -24px', position: 'relative', overflow: 'hidden', borderRadius: '0 0 26px 26px' }}>
-        <div style={{
+        <div className="herb-hero" style={{
           position: 'relative', height: 640, display: 'flex', alignItems: 'center',
           backgroundImage: "url('/assets/tbone-pak-choi.jpg')", backgroundSize: 'cover', backgroundPosition: 'center',
         }}>
           <div className="herb-hero-overlay" style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg,rgba(251,247,241,.95) 0%,rgba(251,247,241,.85) 38%,rgba(251,247,241,.15) 62%,rgba(251,247,241,0) 78%)' }} />
-          <div style={{ position: 'relative', padding: '0 48px', maxWidth: 900 }}>
+          <div className="herb-hero-inner" style={{ position: 'relative', padding: '0 48px', maxWidth: 900 }}>
             <div style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: '.16em', textTransform: 'uppercase', color: '#2A2932', marginBottom: 22 }}>
               Fresh, cost-aware, no compromise
             </div>
