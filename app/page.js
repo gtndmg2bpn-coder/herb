@@ -148,7 +148,7 @@ export default function HomePage() {
           position: 'relative', height: 640, display: 'flex', alignItems: 'center',
           backgroundImage: "url('/assets/tbone-pak-choi.jpg')", backgroundSize: 'cover', backgroundPosition: 'center',
         }}>
-          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg,rgba(251,247,241,.95) 0%,rgba(251,247,241,.85) 38%,rgba(251,247,241,.15) 62%,rgba(251,247,241,0) 78%)' }} />
+          <div className="herb-hero-overlay" style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg,rgba(251,247,241,.95) 0%,rgba(251,247,241,.85) 38%,rgba(251,247,241,.15) 62%,rgba(251,247,241,0) 78%)' }} />
           <div style={{ position: 'relative', padding: '0 48px', maxWidth: 900 }}>
             <div style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: '.16em', textTransform: 'uppercase', color: '#2A2932', marginBottom: 22 }}>
               Fresh, cost-aware, no compromise
@@ -196,7 +196,7 @@ export default function HomePage() {
             backgroundImage: `url('${spotlight.image}')`, backgroundSize: 'cover', backgroundPosition: 'center 30%',
             textDecoration: 'none', color: 'inherit',
           }}>
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg,rgba(251,247,241,.95) 0%,rgba(251,247,241,.75) 45%,rgba(251,247,241,0) 78%)' }} />
+            <div className="herb-hero-overlay" style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg,rgba(251,247,241,.95) 0%,rgba(251,247,241,.75) 45%,rgba(251,247,241,0) 78%)' }} />
             <div style={{ position: 'relative', padding: 40, maxWidth: 440 }}>
               <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: '.16em', textTransform: 'uppercase', color: '#8FBBD6', marginBottom: 14 }}>Dish of the week</div>
               <h2 style={{ fontWeight: 800, fontSize: 38, letterSpacing: '-.03em', margin: 0, color: '#2A2932', lineHeight: 1.05 }}>{spotlight.recipe.name}</h2>
