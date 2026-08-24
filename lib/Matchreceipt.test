@@ -1,0 +1,149 @@
+// test/matchReceipt.test.js — run: node test/matchReceipt.test.js
+const assert = require('assert');
+const { matchReceipt, packPricePence } = require('../lib/matchReceipt');
+
+// Fixture master carries storage_location so the matcher can default pantry lots.
+const MASTER = [
+  { id: 'i-chick', name: 'Chicken breast', storage_location: 'fridge' },
+  { id: 'i-spin', name: 'Spinach', storage_location: 'fridge' },
+  { id: 'i-butt', name: 'Butternut squash', storage_location: 'cupboard' },
+  { id: 'i-rice', name: 'Basmati rice', storage_location: 'cupboard' },
+];
+
+let pass = 0, fail = 0;
+function t(name, fn) { try { fn(); pass++; } catch (e) { fail++; console.log('  ✗ ' + name + '\n    ' + e.message); } }
+
+// --- helper -----------------------------------------------------------------
+t('packPricePence: prefers unit price', () => {
+  assert.strictEqual(packPricePence({ unitPricePence: 320, lineTotalPence: 640, quantity: 2 }), 320);
+});
+t('packPricePence: derives from total/qty', () => {
+  assert.strictEqual(packPricePence({ lineTotalPence: 640, quantity: 2 }), 320);
+});
+t('packPricePence: null when no price', () => {
+  assert.strictEqual(packPricePence({ quantity: 1 }), null);
+});
+
+// --- happy receipt ----------------------------------------------------------
+const HAPPY = {
+  retailer: 'Tesco',
+  purchaseDate: '2026-08-18',
+  totalPence: 799,
+  lines: [
+    { rawText: 'TESCO CHICKEN BRST 650G', productGuess: 'chicken breast', quantity: 1, unitPricePence: 350, lineTotalPence: 350 },
+    { rawText: 'BTNT SQUASH', productGuess: 'butternut squash', quantity: 1, unitPricePence: 89, lineTotalPence: 89 },
+    { rawText: 'BASMATI 1KG', productGuess: 'basmati rice', quantity: 1, unitPricePence: 360, lineTotalPence: 360 },
+  ],
+};
+
+t('happy: all lines PROPOSE', () => {
+  const r = matchReceipt(HAPPY, MASTER);
+  assert.strictEqual(r.summary.matched, 3);
+  assert.strictEqual(r.summary.unmatched, 0);
+});
+t('happy: spend row uses stated total + grocery + date', () => {
+  const r = matchReceipt(HAPPY, MASTER);
+  assert.strictEqual(r.commitPlan.spend.amountPence, 799);
+  assert.strictEqual(r.commitPlan.spend.category, 'grocery');
+  assert.strictEqual(r.commitPlan.spend.spendDate, '2026-08-18');
+  assert.ok(r.commitPlan.spend.note.includes('Tesco'));
+});
+t('happy: reconciles (line sum == stated total)', () => {
+  const r = matchReceipt(HAPPY, MASTER);
+  assert.strictEqual(r.totals.lineSumPence, 799);
+  assert.strictEqual(r.totals.reconciled, true);
+  assert.strictEqual(r.totals.discrepancyPence, 0);
+});
+t('happy: 3 pantry items with correct shape + default location', () => {
+  const r = matchReceipt(HAPPY, MASTER);
+  assert.strictEqual(r.commitPlan.pantryItems.length, 3);
+  const chicken = r.commitPlan.pantryItems.find((p) => p.ingredientId === 'i-chick');
+  assert.strictEqual(chicken.itemKind, 'ingredient');
+  assert.strictEqual(chicken.location, 'fridge');
+  assert.strictEqual(chicken.costPence, 350);
+  assert.strictEqual(chicken.boughtDate, '2026-08-18');
+});
+t('happy: price updates tagged RECEIPT + dated', () => {
+  const r = matchReceipt(HAPPY, MASTER);
+  assert.strictEqual(r.commitPlan.priceUpdates.length, 3);
+  const u = r.commitPlan.priceUpdates[0];
+  assert.strictEqual(u.source, 'RECEIPT');
+  assert.strictEqual(u.fetchedAt, '2026-08-18');
+  assert.strictEqual(u.packSize, null); // null = keep existing pack_size
+});
+
+// --- weak match -> REVIEW ---------------------------------------------------
+t('weak match -> REVIEW with alternatives, still planned', () => {
+  const ex = { retailer: 'Aldi', purchaseDate: '2026-08-18', totalPence: 120,
+    lines: [{ rawText: 'GREEN LEAF', productGuess: 'green', quantity: 1, unitPricePence: 120, lineTotalPence: 120 }] };
+  const r = matchReceipt(ex, MASTER);
+  const line = r.lines[0];
+  assert.ok(['REVIEW', 'UNMATCHED'].includes(line.status));
+});
+
+// --- non-ingredient line -> UNMATCHED --------------------------------------
+t('non-ingredient line -> UNMATCHED, in spend, not in pantry/price', () => {
+  const ex = {
+    retailer: 'Tesco', purchaseDate: '2026-08-18', totalPence: 360,
+    lines: [
+      { rawText: 'CARRIER BAG', productGuess: 'carrier bag', quantity: 1, unitPricePence: 10, lineTotalPence: 10 },
+      { rawText: 'BASMATI 1KG', productGuess: 'basmati rice', quantity: 1, unitPricePence: 350, lineTotalPence: 350 },
+    ],
+  };
+  const r = matchReceipt(ex, MASTER);
+  assert.strictEqual(r.summary.unmatched, 1);
+  assert.strictEqual(r.commitPlan.pantryItems.length, 1);       // only the rice
+  assert.strictEqual(r.commitPlan.priceUpdates.length, 1);
+  assert.strictEqual(r.commitPlan.spend.amountPence, 360);      // bag still counts toward spend
+});
+
+// --- total mismatch -> flagged, not fixed -----------------------------------
+t('total mismatch -> reconciled false + discrepancy', () => {
+  const ex = {
+    retailer: 'Tesco', purchaseDate: '2026-08-18', totalPence: 500,  // stated
+    lines: [{ rawText: 'BASMATI 1KG', productGuess: 'basmati rice', quantity: 1, unitPricePence: 350, lineTotalPence: 350 }],
+  };
+  const r = matchReceipt(ex, MASTER);
+  assert.strictEqual(r.totals.reconciled, false);
+  assert.strictEqual(r.totals.discrepancyPence, 150);
+  assert.strictEqual(r.commitPlan.spend.amountPence, 500);      // trusts the printed total
+});
+
+// --- no stated total -> falls back to line sum, stays unreconciled ----------
+t('no stated total -> spend = line sum, reconciled false', () => {
+  const ex = {
+    retailer: null, purchaseDate: '2026-08-18', totalPence: null,
+    lines: [{ rawText: 'SPINACH', productGuess: 'spinach', quantity: 1, unitPricePence: 90, lineTotalPence: 90 }],
+  };
+  const r = matchReceipt(ex, MASTER);
+  assert.strictEqual(r.commitPlan.spend.amountPence, 90);
+  assert.strictEqual(r.totals.reconciled, false);
+});
+
+// --- guards -----------------------------------------------------------------
+t('empty extraction -> safe empty plan, no throw', () => {
+  const r = matchReceipt({}, MASTER);
+  assert.strictEqual(r.lines.length, 0);
+  assert.strictEqual(r.commitPlan.spend, null);
+  assert.strictEqual(r.commitPlan.pantryItems.length, 0);
+});
+t('garbage input -> safe', () => {
+  const r = matchReceipt(null, MASTER);
+  assert.strictEqual(r.summary.lineCount, 0);
+});
+t('never emits a commit — plan only, statuses bounded', () => {
+  const r = matchReceipt(HAPPY, MASTER);
+  r.lines.forEach((l) => assert.ok(['PROPOSE', 'REVIEW', 'UNMATCHED'].includes(l.status)));
+  assert.ok('commitPlan' in r && !('committed' in r));
+});
+t('stricter caller threshold downgrades PROPOSE to REVIEW', () => {
+  // "chicken" is a partial match to "Chicken breast" (score 0.85). Default
+  // strong threshold (0.85) would PROPOSE it; a 0.9 threshold must downgrade it.
+  const ex = { retailer: 'Tesco', purchaseDate: '2026-08-18', totalPence: 350,
+    lines: [{ rawText: 'CHICKEN', productGuess: 'chicken', quantity: 1, unitPricePence: 350, lineTotalPence: 350 }] };
+  assert.strictEqual(matchReceipt(ex, MASTER).lines[0].status, 'PROPOSE');
+  assert.strictEqual(matchReceipt(ex, MASTER, { strongMatch: 0.9 }).lines[0].status, 'REVIEW');
+});
+
+console.log(`\n${pass}/${pass + fail} passing` + (fail ? `  (${fail} FAILED)` : '  ✓'));
+process.exit(fail ? 1 : 0);
