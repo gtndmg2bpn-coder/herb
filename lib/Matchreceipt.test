@@ -1,3 +1,4 @@
+
 // test/matchReceipt.test.js — run: node test/matchReceipt.test.js
 const assert = require('assert');
 const { matchReceipt, packPricePence } = require('../lib/matchReceipt');
