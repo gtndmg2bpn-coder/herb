@@ -75,6 +75,7 @@ export default function AuthNav() {
           <Link href="/dashboard" style={{ color: '#2A2932', fontWeight: 700, textDecoration: 'none' }}>Hi, {name}</Link>
           <Link href="/" style={{ textDecoration: 'none', color: 'inherit' }}>Browse recipes</Link>
           <Link href="/shopping" style={{ textDecoration: 'none', color: 'inherit' }}>Shopping list</Link>
+          <Link href="/capture" style={{ textDecoration: 'none', color: 'inherit' }}>Scan receipt</Link>
           <button
             type="button"
             onClick={signOut}
