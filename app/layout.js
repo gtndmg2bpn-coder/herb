@@ -5,6 +5,7 @@
 import './globals.css';
 import { Hanken_Grotesk, Newsreader } from 'next/font/google';
 import AuthNav from './AuthNav';
+import CaptureBar from '../components/CaptureBar';
 
 const hanken = Hanken_Grotesk({
   subsets: ['latin'],
@@ -42,6 +43,7 @@ export default function RootLayout({ children }) {
       <body className={`${hanken.variable} ${newsreader.variable}`}>
         <AuthNav />
         {children}
+        <CaptureBar />
       </body>
     </html>
   );
