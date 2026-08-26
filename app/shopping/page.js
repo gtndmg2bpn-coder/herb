@@ -135,7 +135,8 @@ export default function ShoppingPage() {
         .from('shopping_list_items')
         .select('*')
         .in('trip_id', planned.map((trip) => trip.id))
-        .order('label');
+        .order('aisle_rank', { ascending: true })
+        .order('label', { ascending: true });
       if (itemErr) throw itemErr;
       setItems(itemRows || []);
     } else {
