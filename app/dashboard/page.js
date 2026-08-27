@@ -1267,6 +1267,26 @@ export default function DashboardPage() {
               {MEALS.map((meal) => {
                 const slot = slotByKey[slotKey(slotDate, meal)];
                 const recipe = slot?.recipe_id ? recipeById[slot.recipe_id] : null;
+
+                // ── Cook-day guard ────────────────────────────────────────────
+                // A slot may only offer "Cooked" when it IS the cook: a batch or
+                // fresh cook whose cook_date is this very day. Everything else is
+                // a portion coming out of stock — you EAT it, you don't cook it.
+                // Legacy rows (fill_source null, written before the column
+                // existed) keep the old behaviour so nothing pre-guard changes.
+                const isLegacySlot = !slot || slot.fill_source == null;
+                const isCookDay =
+                  (slot?.fill_source === 'batch_cook' || slot?.fill_source === 'fresh_cook') &&
+                  slot?.cook_date === slot?.slot_date;
+                const canCook = isLegacySlot || isCookDay;
+                const sourceLabel = isLegacySlot || !slot ? null
+                  : isCookDay ? 'cook this'
+                  : slot.fill_source === 'freezer_pull' || slot.fill_source === 'batch_freeze' ? 'from the freezer'
+                  : slot.fill_source === 'fridge_pull' ? 'from the fridge'
+                  : slot.fill_source === 'batch_cook' && slot.cook_date ? `from ${dayLabel(slot.cook_date)}'s batch`
+                  : slot.fill_source === 'fresh_cook' && slot.cook_date ? `leftover from ${dayLabel(slot.cook_date)}`
+                  : null;
+
                 return (
                   <div key={meal} style={{ background: MEAL_WASHES[meal], borderRadius: 10, padding: 8, fontSize: 11 }}>
                     <div style={{ textTransform: 'uppercase', letterSpacing: '.05em', color: MUTED, fontWeight: 600, fontSize: 9 }}>{meal}</div>
@@ -1294,12 +1314,15 @@ export default function DashboardPage() {
                                 : ''}
                             </span>
                           ) : null}
+                          {!slot.cooked_at && sourceLabel ? (
+                            <span style={{ color: MUTED, fontWeight: 600 }}>{' '}· {sourceLabel}</span>
+                          ) : null}
                         </div>
                         <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
                           <Link href={`/recipe/${recipe.id}`} style={{ fontSize: 9, fontWeight: 700, textDecoration: 'underline', color: INK }}>View</Link>
                           <ChipAction disabled={busy} onClick={() => openChooser(slotDate, meal, recipe.id)}>Swap</ChipAction>
                           <ChipAction disabled={busy} onClick={() => editPortions(slot)}>×{slot.portions ?? householdPortions}</ChipAction>
-                          {slot.cooked_at ? (
+                          {slot.cooked_at || !canCook ? (
                             <ChipAction disabled={busy} onClick={() => eatSlot(slot)} colour={INK}>Eaten</ChipAction>
                           ) : (
                             <ChipAction disabled={busy} onClick={() => setCookingSlot({ ...slot, recipe })} colour={INK}>Cooked</ChipAction>
