@@ -19,8 +19,10 @@ import {
   logOffPlanIntake,
   logWeight,
   cookMeal,
+  commitTargets,
 } from '../../lib/actions';
 import { CookStepper } from '../../components/CookStepper';
+import { recalcTargets } from '../../lib/recalcTargets';
 
 const MEALS = ['breakfast', 'lunch', 'dinner'];
 const LOCATIONS = ['fridge', 'freezer', 'cupboard'];
@@ -57,6 +59,7 @@ const MUTED = '#5B5966';
 const HAIRLINE = '#E7DFD4';
 const PINK = '#E7A6B5';
 const BLUE = '#8FBBD6';
+const GREEN = '#5E7A63';
 
 // Pastel washes: meal slots and pantry appliances, from the design file.
 const MEAL_WASHES = {
@@ -118,6 +121,17 @@ function formatWeight(weightKg, units) {
     return `${stone} st ${pounds} lb`;
   }
   return `${Number(weightKg).toFixed(1)} kg`;
+}
+
+// Signed weight delta for the check-in card. Deltas read cleanest as a single unit
+// (lb or kg), not st+lb, so this stays flat rather than reusing formatWeight.
+function formatDelta(deltaKg, units) {
+  if (deltaKg == null) return null;
+  const sign = deltaKg <= 0 ? '\u2212' : '+'; // minus sign / plus
+  if (units === 'imperial') {
+    return `${sign}${(Math.abs(deltaKg) * 2.2046226218).toFixed(1)} lb`;
+  }
+  return `${sign}${Math.abs(deltaKg).toFixed(1)} kg`;
 }
 
 function slotKey(slotDate, meal) {
@@ -268,6 +282,12 @@ export default function DashboardPage() {
   const [weightInput, setWeightInput] = useState('');
   const [weightStones, setWeightStones] = useState('');
   const [weightPounds, setWeightPounds] = useState('');
+
+  // Adaptive-targets UI state. proposal holds a recalcTargets() result while its card
+  // is open; notice is the transient green "Targets unchanged" / "Targets updated" toast.
+  const [proposal, setProposal] = useState(null);
+  const [proposalError, setProposalError] = useState('');
+  const [notice, setNotice] = useState('');
   const [chooser, setChooser] = useState(null);
   const [eatingForm, setEatingForm] = useState(null);
   const [pantryForm, setPantryForm] = useState({
@@ -316,7 +336,7 @@ export default function DashboardPage() {
 
     const { data: prof, error: profError } = await supabase
       .from('profiles')
-      .select('display_name, start_weight_kg, goal_weight_kg, target_kcal, target_protein_g, target_carbs_g, target_fat_g, diet, preferred_units, household_portions, disliked_recipe_ids, disliked_ingredient_ids, allergens, dislikes')
+      .select('display_name, start_weight_kg, goal_weight_kg, target_kcal, target_protein_g, target_carbs_g, target_fat_g, diet, preferred_units, household_portions, disliked_recipe_ids, disliked_ingredient_ids, allergens, dislikes, sex, date_of_birth, height_cm, activity_level, pace, avg_daily_burn_kcal')
       .eq('id', uid)
       .maybeSingle();
     if (profError) throw profError;
@@ -488,13 +508,60 @@ export default function DashboardPage() {
   }
 
   async function runAction(message, action) {
-    if (!window.confirm(message)) return;
+    if (!window.confirm(message)) return false;
     setBusy(true);
     setError('');
     const { error: actionError } = await action();
     if (actionError) setError(actionError.message);
     await refreshAfterAction();
     setBusy(false);
+    return !actionError;
+  }
+
+  // Auto-dismiss the green toast a few seconds after it appears.
+  useEffect(() => {
+    if (!notice) return undefined;
+    const t = setTimeout(() => setNotice(''), 4000);
+    return () => clearTimeout(t);
+  }, [notice]);
+
+  // Check-in card values, derived from the weigh-in history (ascending by date).
+  const checkin = useMemo(() => {
+    if (!weightRows || weightRows.length === 0) return { hasData: false };
+    const latest = weightRows[weightRows.length - 1];
+    const prev = weightRows.length > 1 ? weightRows[weightRows.length - 2] : null;
+    const daysSince = (Date.now() - new Date(latest.created_at).getTime()) / 86400000;
+    return {
+      hasData: true,
+      latestKg: Number(latest.weight_kg),
+      deltaKg: prev ? Number(latest.weight_kg) - Number(prev.weight_kg) : null,
+      daysSince,
+      duePrompt: daysSince >= 7,
+      stale: daysSince > 14,
+    };
+  }, [weightRows]);
+
+  // Confirm tap on the proposal card — the ONLY target write in the app. Commits via
+  // the actions layer (commit_targets RPC); keeps the card open on error so it can retry.
+  async function confirmProposal() {
+    if (!proposal) return;
+    setBusy(true);
+    setProposalError('');
+    const { error: commitErr } = await commitTargets({
+      kcal: proposal.new.target_kcal,
+      proteinG: proposal.new.target_protein_g,
+      carbsG: proposal.new.target_carbs_g,
+      fatG: proposal.new.target_fat_g,
+    });
+    if (commitErr) {
+      setProposalError(commitErr.message);
+      setBusy(false);
+      return;
+    }
+    setProposal(null);
+    await refreshAfterAction();
+    setBusy(false);
+    setNotice('Targets updated.');
   }
 
   async function saveProfile(patch) {
@@ -782,10 +849,23 @@ export default function DashboardPage() {
         return;
       }
     }
-    await runAction(`Log ${formatWeight(weightKg, profile?.preferred_units)}?`, () => logWeight({ weightKg }));
+    const logged = await runAction(`Log ${formatWeight(weightKg, profile?.preferred_units)}?`, () => logWeight({ weightKg }));
     setWeightInput('');
     setWeightStones('');
     setWeightPounds('');
+    if (!logged) return;
+
+    // Propose-only recalc. Build the readings synchronously from the value just logged
+    // (prepended to the pre-refresh history) so we don't race the state refresh. The
+    // brain writes nothing; a real change opens the card, otherwise a quiet toast.
+    const readings = [{ weight_kg: weightKg, created_at: new Date().toISOString() }, ...weightRows];
+    const result = recalcTargets({ profile, readings });
+    if (result.status === 'PROPOSE' || result.status === 'GOAL_REACHED') {
+      setProposalError('');
+      setProposal(result);
+    } else {
+      setNotice('Logged. Targets unchanged.');
+    }
   }
 
   function stockName(row) {
@@ -863,6 +943,86 @@ export default function DashboardPage() {
         </p>
       ) : null}
 
+      {notice ? (
+        <p role="status" style={{ margin: 0, background: '#EAF1EB', border: `1px solid ${GREEN}`, color: GREEN, borderRadius: 12, padding: '12px 16px', fontSize: 14, fontWeight: 700 }}>
+          {notice}
+        </p>
+      ) : null}
+
+      {proposal ? (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(42,41,50,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: 20 }}
+          onClick={() => { if (!busy) { setProposal(null); setProposalError(''); } }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: CREAM, border: `1px solid ${HAIRLINE}`, borderRadius: 20, padding: 26, maxWidth: 420, width: '100%', boxShadow: '0 18px 50px rgba(42,41,50,.25)' }}
+          >
+            {proposal.status === 'GOAL_REACHED' ? (
+              <>
+                <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: '-.02em' }}>Goal reached 🎉</h2>
+                <p style={{ margin: '8px 0 4px', fontSize: 14, color: MUTED }}>
+                  You’ve hit your goal weight — moving you to maintenance.
+                </p>
+              </>
+            ) : (
+              <>
+                <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: '-.02em' }}>
+                  You’re at {formatWeight(proposal.driverWeightKg, profile?.preferred_units)}
+                </h2>
+                <p style={{ margin: '8px 0 4px', fontSize: 14, color: MUTED }}>
+                  {formatDelta(proposal.weightDeltaKg, profile?.preferred_units)
+                    ? `${formatDelta(proposal.weightDeltaKg, profile?.preferred_units)} since your last weigh-in. Here are your updated daily targets.`
+                    : 'Here are your updated daily targets.'}
+                </p>
+              </>
+            )}
+
+            <div style={{ marginTop: 14 }}>
+              {[
+                ['Calories', 'target_kcal', 'kcal'],
+                ['Protein', 'target_protein_g', 'g'],
+                ['Carbs', 'target_carbs_g', 'g'],
+                ['Fat', 'target_fat_g', 'g'],
+              ].map(([label, key, unit]) => (
+                <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '9px 0', borderTop: `1px solid ${HAIRLINE}`, fontSize: 14 }}>
+                  <span style={{ color: MUTED }}>{label}</span>
+                  <span>
+                    <span style={{ color: MUTED }}>{proposal.old[key] ?? '—'}</span>
+                    <span style={{ color: MUTED, margin: '0 8px' }}>→</span>
+                    <b style={{ color: INK }}>{proposal.new[key]}</b>
+                    <span style={{ color: MUTED, fontSize: 12, marginLeft: 4 }}>{unit}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {proposalError ? (
+              <p role="alert" style={{ margin: '12px 0 0', color: '#b00020', fontSize: 13 }}>{proposalError}</p>
+            ) : null}
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+              <button
+                type="button"
+                onClick={confirmProposal}
+                disabled={busy}
+                style={{ ...darkPillButton, background: PINK, color: INK, flex: 1, opacity: busy ? 0.7 : 1 }}
+              >
+                {proposal.status === 'GOAL_REACHED' ? 'Move to maintenance' : 'Confirm'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setProposal(null); setProposalError(''); }}
+                disabled={busy}
+                style={{ ...outlinePillButton }}
+              >
+                Not now
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* ── Progress banner ─────────────────────────────────────────── */}
       <section
         className="dash-progress"
@@ -889,7 +1049,29 @@ export default function DashboardPage() {
                   <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em', color: MUTED, fontWeight: 600 }}>Goal</span>
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 8, marginTop: 22, flexWrap: 'wrap', alignItems: 'center' }}>
+              {checkin.hasData ? (
+                <div style={{ marginTop: 18 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>
+                    Last weigh-in {formatWeight(checkin.latestKg, profile.preferred_units)}
+                  </span>
+                  {checkin.deltaKg != null ? (
+                    <span style={{ fontSize: 13, color: MUTED }}> · {formatDelta(checkin.deltaKg, profile.preferred_units)} since last</span>
+                  ) : null}
+                  {checkin.duePrompt ? (
+                    <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: GREEN }}>
+                      Time to weigh in — it’s been {Math.floor(checkin.daysSince)} days.
+                    </div>
+                  ) : null}
+                  {checkin.stale ? (
+                    <div style={{ marginTop: 4, fontSize: 11, color: MUTED }}>
+                      Your targets are based on this last reading.
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div style={{ marginTop: 18, fontSize: 13, color: MUTED }}>Log your first weigh-in to start tracking.</div>
+              )}
+              <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap', alignItems: 'center' }}>
                 {profile.preferred_units === 'imperial' ? (
                   <>
                     <input
