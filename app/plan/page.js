@@ -89,10 +89,12 @@ export default function PlanPage() {
       }
       const uid = session.user.id;
 
-      // Monday-anchored week, matching the dashboard's window so generated slots show there.
-      const base = new Date();
-      base.setDate(base.getDate() - ((base.getDay() + 6) % 7));
-      const start = isoDate(base);
+      // The plan window is a LOCK DATE + 7 days, defaulting to today — it is not
+      // Monday-anchored. The dashboard grid draws today..today+6, so a Monday anchor
+      // left the tail of the grid permanently blank: on a Wednesday the plan covered
+      // Mon..Sun while the grid drew Wed..next Tue, and the last two days were never
+      // planned at all. Same anchor, same seven days, nothing falls off the end.
+      const start = isoDate(new Date());
       const weekDays = Array.from({ length: 7 }, (_, i) => addDays(start, i));
 
       const { data: lots } = await supabase
@@ -124,6 +126,22 @@ export default function PlanPage() {
     load();
     return () => { cancelled = true; };
   }, []);
+
+  // Move the lock date. Constraints are pinned to real dates, so anything that
+  // falls outside the new window is dropped rather than silently applying to a day
+  // that is no longer in the plan.
+  function changeStart(iso) {
+    if (!iso) return;
+    const nextDays = Array.from({ length: 7 }, (_, i) => addDays(iso, i));
+    const inWindow = new Set(nextDays);
+    setWeekStart(iso);
+    setDays(nextDays);
+    setOuts((cur) => cur.filter((o) => inWindow.has(o.date)));
+    setBatchDays((cur) => cur.filter((d) => inWindow.has(d)));
+    setGuests((cur) => cur.filter((g) => inWindow.has(g.date)));
+    setPlanResult(null);
+    setSaved(false);
+  }
 
   function toggleMeal(m) {
     setMealsToPlan((cur) => (cur.includes(m) ? cur.filter((x) => x !== m) : [...cur, m]));
@@ -268,6 +286,16 @@ export default function PlanPage() {
               <div style={{ fontSize: 14, color: MUTED, marginTop: 6 }}>
                 Set this week&rsquo;s constraints. The plan itself is generated in a later step.
               </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, fontSize: 13, fontWeight: 600 }}>
+                <span style={{ color: MUTED }}>Plan from</span>
+                <input
+                  type="date"
+                  value={weekStart || ''}
+                  onChange={(e) => changeStart(e.target.value)}
+                  style={{ ...inputStyle, padding: '8px 12px' }}
+                />
+                <span style={{ color: MUTED, fontWeight: 400 }}>for the next 7 days</span>
+              </label>
             </header>
 
             <div style={{ display: 'grid', gap: 20 }}>
