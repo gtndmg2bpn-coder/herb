@@ -58,6 +58,52 @@ const ALLERGEN_LABELS = {
   peanuts: 'Peanuts', sesame: 'Sesame', soybeans: 'Soybeans', sulphites: 'Sulphites',
 };
 
+// Cuisine + dish-type tags. These MUST equal recipes.cuisine / recipes.dish_type
+// verbatim — they are matched against the column, not displayed from it, so a
+// label change here without the matching UPDATE silently empties a chip.
+//
+// Two dimensions on purpose. "Indian" and "a salad" are different questions and
+// people ask both: pick a cuisine to steer the week's flavour, pick a dish type
+// to steer its shape. Either alone works; together they narrow.
+const CUISINE_TAGS = [
+  'British & Classic', 'Italian', 'Indian', 'Thai', 'Asian', 'Spanish',
+  'Mexican', 'Middle Eastern', 'Mediterranean', 'French', 'Anytime',
+];
+// 'Anytime' is not a cuisine — it is the honest label for the dishes that have
+// none: shakes, yoghurt bowls, cottage cheese. Better a truthful bucket than
+// pretending a protein shake is British.
+
+const DISH_TAGS = [
+  { key: 'salad', label: 'Salads' },
+  { key: 'grill', label: 'Grills & steaks' },
+  { key: 'curry', label: 'Curries' },
+  { key: 'pasta', label: 'Pasta' },
+  { key: 'roast', label: 'Roasts & slow-cooked' },
+  { key: 'stew', label: 'Stews' },
+  { key: 'bowl', label: 'Bowls' },
+  { key: 'breakfast', label: 'Breakfasts' },
+  { key: 'shake', label: 'Shakes' },
+  { key: 'board', label: 'Boards & snacks' },
+];
+const DISH_LABEL = Object.fromEntries(DISH_TAGS.map((d) => [d.key, d.label]));
+
+// One chip, used for cuisines, dish types and the week's allergens.
+function Chip({ on, onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        border: `1px solid ${on ? INK : HAIRLINE}`, background: on ? INK : '#fff',
+        color: on ? CREAM : INK, borderRadius: 100, padding: '6px 13px',
+        fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 // Small pill toggle used for "Freezer first" and "Off meat".
 function Toggle({ on, onChange, label }) {
   return (
@@ -87,7 +133,8 @@ export default function PlanPage() {
   const [batchDays, setBatchDays] = useState([]); // array of date strings
   const [freezerFirst, setFreezerFirst] = useState(true);
   const [avoidMeat, setAvoidMeat] = useState(false);
-  const [cuisine, setCuisine] = useState('');
+  const [weekCuisines, setWeekCuisines] = useState([]);   // steers lunch + dinner only
+  const [weekDishTypes, setWeekDishTypes] = useState([]); // steers lunch + dinner only
   const [guests, setGuests] = useState([]);       // array of { date, meal, count }
   const [weekAllergens, setWeekAllergens] = useState([]);  // THIS WEEK only
   const [includeIds, setIncludeIds] = useState([]);        // restrict the week to these recipes
@@ -128,7 +175,7 @@ export default function PlanPage() {
         .from('pantry_lots')
         .select('recipe_id, quantity, expiry_date')
         .eq('user_id', uid).eq('item_kind', 'recipe').eq('location', 'freezer');
-      const { data: recipeRows } = await supabase.from('recipes').select('id, name, protein_type, meal_type, meal_types, freezes, batch_portions, fresh_portions, fresh_shelf_days');
+      const { data: recipeRows } = await supabase.from('recipes').select('id, name, protein_type, meal_type, meal_types, cuisine, dish_type, freezes, batch_portions, fresh_portions, fresh_shelf_days');
 
       if (cancelled) return;
 
@@ -165,7 +212,13 @@ export default function PlanPage() {
           if (Array.isArray(saved.guests)) setGuests(saved.guests);
           const ap = saved.appetite || {};
           setAvoidMeat(!!ap.avoid_meat);
-          setCuisine(ap.cuisine || '');
+          // A week saved before the tags existed carries appetite.cuisine as free
+          // text. If it happens to name a real tag, restore it as a chip; if not,
+          // drop it rather than showing a chip that matches nothing. The engine
+          // still honours the raw string either way.
+          if (Array.isArray(ap.cuisines)) setWeekCuisines(ap.cuisines.filter((c) => CUISINE_TAGS.includes(c)));
+          else if (ap.cuisine && CUISINE_TAGS.includes(ap.cuisine)) setWeekCuisines([ap.cuisine]);
+          if (Array.isArray(ap.dish_types)) setWeekDishTypes(ap.dish_types.filter((d) => DISH_LABEL[d]));
           if (Array.isArray(ap.avoid_allergens)) setWeekAllergens(ap.avoid_allergens);
           if (Array.isArray(ap.include_recipe_ids)) setIncludeIds(ap.include_recipe_ids);
         }
@@ -173,7 +226,19 @@ export default function PlanPage() {
 
       setProfileAllergens(profileRow?.allergens || []);
       setDislikedIds(profileRow?.disliked_recipe_ids || []);
-      setRecipeList((recipeRows || []).map((r) => ({ id: r.id, name: r.name })).sort((a, b) => a.name.localeCompare(b.name)));
+      setRecipeList(
+        (recipeRows || [])
+          .map((r) => ({
+            id: r.id,
+            name: r.name,
+            cuisine: r.cuisine || null,
+            dish_type: r.dish_type || null,
+            meal_types: Array.isArray(r.meal_types) && r.meal_types.length
+              ? r.meal_types
+              : (r.meal_type ? [r.meal_type] : []),
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name))
+      );
       setWeekStart(start);
       setDays(weekDays);
       setFreezerLots(dueLots);
@@ -202,6 +267,16 @@ export default function PlanPage() {
 
   function toggleWeekAllergen(code) {
     setWeekAllergens((cur) => (cur.includes(code) ? cur.filter((x) => x !== code) : [...cur, code]));
+    setSaved(false);
+  }
+
+  function toggleCuisine(tag) {
+    setWeekCuisines((cur) => (cur.includes(tag) ? cur.filter((x) => x !== tag) : [...cur, tag]));
+    setSaved(false);
+  }
+
+  function toggleDishType(key) {
+    setWeekDishTypes((cur) => (cur.includes(key) ? cur.filter((x) => x !== key) : [...cur, key]));
     setSaved(false);
   }
 
@@ -239,7 +314,9 @@ export default function PlanPage() {
       batch_days: batchDays,
       appetite: {
         avoid_meat: avoidMeat,
-        cuisine: cuisine || null,
+        cuisines: weekCuisines,       // steers lunch + dinner only
+        dish_types: weekDishTypes,    // steers lunch + dinner only
+        cuisine: null,                // retired free-text field, kept null for old readers
         avoid_allergens: weekAllergens,
         include_recipe_ids: includeIds,
       },
@@ -273,7 +350,9 @@ export default function PlanPage() {
         batch_days: batchDays,
         appetite: {
           avoid_meat: avoidMeat,
-          cuisine: cuisine || null,
+          cuisines: weekCuisines,                  // steers lunch + dinner only
+          dish_types: weekDishTypes,               // steers lunch + dinner only
+          cuisine: null,                           // retired free-text field
           avoid_allergens: weekAllergens,          // this week only
           include_recipe_ids: includeIds,          // empty = the whole book
         },
@@ -302,16 +381,24 @@ export default function PlanPage() {
       try {
         const { data: tagRows, error: tagErr } = await supabase
           .from('recipes')
-          .select('id, meal_type, meal_types');
+          .select('id, meal_type, meal_types, cuisine, dish_type');
         if (!tagErr && Array.isArray(tagRows)) {
           const tagsById = {};
           for (const r of tagRows) {
             const list = Array.isArray(r.meal_types) && r.meal_types.length
               ? r.meal_types
               : (r.meal_type ? [r.meal_type] : null);
-            if (list) tagsById[r.id] = list;
+            tagsById[r.id] = { meal_types: list, cuisine: r.cuisine || null, dish_type: r.dish_type || null };
           }
-          recipePool = recipePool.map((r) => (tagsById[r.id] ? { ...r, meal_types: tagsById[r.id] } : r));
+          // cuisine / dish_type ride in on the same read as meal_types — the engine
+          // matches appetite.cuisines against recipes.cuisine, so an unmerged pool
+          // would make every steer match nothing and blank the week.
+          recipePool = recipePool.map((r) => {
+            const t = tagsById[r.id];
+            if (!t) return r;
+            return { ...r, ...(t.meal_types ? { meal_types: t.meal_types } : {}),
+                     cuisine: t.cuisine, dish_type: t.dish_type };
+          });
         }
       } catch { /* fall through with the unmerged pool */ }
 
@@ -342,6 +429,40 @@ export default function PlanPage() {
       setGenerating(false);
     }
   }
+
+  // ---- derived: what the chips are actually doing to the book ----------------
+  const steerOn = weekCuisines.length > 0 || weekDishTypes.length > 0;
+  const matchesSteer = (r) =>
+    (weekCuisines.length === 0 || weekCuisines.includes(r.cuisine)) &&
+    (weekDishTypes.length === 0 || weekDishTypes.includes(r.dish_type));
+
+  // The list under the chips. Search and chips both narrow; clearing the chips
+  // is how you get all 55 back.
+  const visibleRecipes = recipeList.filter(
+    (r) => r.name.toLowerCase().includes(recipeSearch.trim().toLowerCase()) && matchesSteer(r)
+  );
+
+  // How many lunch/dinner dishes survive the steer. Zero means those slots come
+  // back empty, and the user should be told BEFORE hitting generate rather than
+  // finding out from the rationale afterwards.
+  const servesLD = (r) => r.meal_types.includes('lunch') || r.meal_types.includes('dinner');
+  const matchingLD = recipeList.filter((r) => servesLD(r) && matchesSteer(r)).length;
+
+  // "Only plan these dishes" is a HARD restriction and it binds EVERY meal,
+  // light ones included — pin five curries with breakfast ticked and you get
+  // seven blank breakfasts. That is the engine working as specified, but it
+  // looks exactly like a bug, so name the gap here rather than letting the
+  // plan come back short and unexplained.
+  const pinnedGaps = includeIds.length === 0 ? [] : PLANNABLE_MEALS.filter((m) => {
+    if (!mealsToPlan.includes(m.key)) return false;
+    const need = (m.key === 'snack_am' || m.key === 'snack_pm') ? 'snack' : m.key;
+    return !includeIds.some((id) => {
+      const r = recipeList.find((x) => x.id === id);
+      if (!r) return false;
+      const types = r.meal_types.length ? r.meal_types : ['lunch', 'dinner'];
+      return types.includes(need);
+    });
+  });
 
   const inputStyle = {
     border: `1px solid ${HAIRLINE}`,
@@ -559,15 +680,73 @@ export default function PlanPage() {
                   </div>
                 </div>
 
-                {/* Pick specific dishes — the recipes have no cuisine tags yet */}
+                {/* ── Fancy something? Cuisine + dish-type chips ──────────
+                    These are TASTE steers and they bind LUNCH AND DINNER ONLY.
+                    Breakfasts, shakes and snacks carry the 'Anytime' cuisine
+                    because they have none, so steering them too would blank
+                    seven breakfasts and fourteen snacks the moment you tapped
+                    "Indian". Light meals are already exempt from the slot cap;
+                    they are exempt from this for the same reason. ── */}
+                <div style={{ marginTop: 22 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>
+                    Fancy a cuisine? <span style={{ fontWeight: 400, color: MUTED }}>(optional)</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
+                    Steers lunch and dinner. Breakfast and snacks are never steered.
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {CUISINE_TAGS.map((tag) => (
+                      <Chip key={tag} on={weekCuisines.includes(tag)} onClick={() => toggleCuisine(tag)}>
+                        {tag}
+                      </Chip>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 20 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>
+                    Fancy something in particular? <span style={{ fontWeight: 400, color: MUTED }}>(optional)</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
+                    A week of salads, a week of curries — the shape of the food rather than its flavour.
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {DISH_TAGS.map((d) => (
+                      <Chip key={d.key} on={weekDishTypes.includes(d.key)} onClick={() => toggleDishType(d.key)}>
+                        {d.label}
+                      </Chip>
+                    ))}
+                  </div>
+                  {(weekCuisines.length > 0 || weekDishTypes.length > 0) && (
+                    <button
+                      type="button"
+                      onClick={() => { setWeekCuisines([]); setWeekDishTypes([]); setSaved(false); }}
+                      style={{ marginTop: 10, border: 'none', background: 'none', color: MUTED, fontSize: 12, fontWeight: 600, textDecoration: 'underline', cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}
+                    >
+                      Clear the steer
+                    </button>
+                  )}
+                  {matchingLD === 0 && (weekCuisines.length > 0 || weekDishTypes.length > 0) && (
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#C0392B', marginTop: 10 }}>
+                      Nothing in your book matches that for lunch or dinner — those slots would come back empty.
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Pick specific dishes ────────────────────────────────
+                    Fifty-five rows in one scroll is not a chooser, it is a
+                    list. The chips above filter it, so picking "Indian" turns
+                    a 55-row scroll into five. ── */}
                 <div style={{ marginTop: 22 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>
                     Only plan these dishes <span style={{ fontWeight: 400, color: MUTED }}>(optional)</span>
                   </div>
                   <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
                     {includeIds.length === 0
-                      ? `Nothing selected — the planner uses all ${recipeList.length} recipes.`
-                      : `${includeIds.length} selected — the week will be built from these only.`}
+                      ? (steerOn
+                          ? `Nothing pinned — the planner uses anything matching the chips above.`
+                          : `Nothing pinned — the planner uses all ${recipeList.length} recipes.`)
+                      : `${includeIds.length} pinned — the week will be built from these only.`}
                   </div>
                   {includeIds.length > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
@@ -590,6 +769,13 @@ export default function PlanPage() {
                       </button>
                     </div>
                   )}
+                  {pinnedGaps.length > 0 && (
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#B26B00', background: '#FDF6E7', border: `1px solid ${AMBER}`, borderRadius: 10, padding: '9px 12px', marginBottom: 10 }}>
+                      Nothing you have pinned can serve {pinnedGaps.map((m) => m.label.toLowerCase()).join(', ')} —
+                      {pinnedGaps.length === 1 ? ' that slot' : ' those slots'} will come back empty. Pin something for
+                      {pinnedGaps.length === 1 ? ' it' : ' them'}, or untick {pinnedGaps.length === 1 ? 'it' : 'them'} above.
+                    </div>
+                  )}
                   <input
                     type="text"
                     placeholder="Search your recipes…"
@@ -597,42 +783,35 @@ export default function PlanPage() {
                     onChange={(event) => setRecipeSearch(event.target.value)}
                     style={{ ...inputStyle, width: '100%', maxWidth: 380, background: '#fff', marginBottom: 8 }}
                   />
-                  <div style={{ maxHeight: 200, overflowY: 'auto', border: `1px solid ${HAIRLINE}`, borderRadius: 12, background: '#fff' }}>
-                    {recipeList
-                      .filter((r) => r.name.toLowerCase().includes(recipeSearch.trim().toLowerCase()))
-                      .map((r) => (
-                        <button
-                          key={r.id}
-                          type="button"
-                          onClick={() => toggleIncluded(r.id)}
-                          style={{
-                            display: 'block', width: '100%', textAlign: 'left', border: 'none',
-                            borderBottom: `1px solid ${HAIRLINE}`, background: includeIds.includes(r.id) ? '#F3F8F4' : 'transparent',
-                            padding: '9px 12px', fontSize: 13, fontWeight: includeIds.includes(r.id) ? 700 : 500,
-                            color: INK, cursor: 'pointer', fontFamily: 'inherit',
-                          }}
-                        >
-                          {includeIds.includes(r.id) ? '✓ ' : '+ '}{r.name}
-                        </button>
-                      ))}
+                  <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 6 }}>
+                    Showing {visibleRecipes.length} of {recipeList.length}
+                    {steerOn ? ' · filtered by the chips above' : ''}
                   </div>
-                </div>
-
-                <div style={{ marginTop: 20 }}>
-                  <label htmlFor="cuisine" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: MUTED, marginBottom: 6 }}>
-                    Fancy a cuisine? <span style={{ fontWeight: 400 }}>(optional)</span>
-                  </label>
-                  <input
-                    id="cuisine"
-                    type="text"
-                    placeholder="e.g. Italian, Indian, Mexican…"
-                    value={cuisine}
-                    onChange={(event) => { setCuisine(event.target.value); setSaved(false); }}
-                    style={{ ...inputStyle, width: '100%', maxWidth: 320, background: '#fff' }}
-                  />
-                  <div style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>
-                    Matches recipe names, tags and descriptions. Your recipes carry no cuisine tags yet,
-                    so this is a keyword search — the picker above is the reliable way to steer a week.
+                  <div style={{ maxHeight: 260, overflowY: 'auto', border: `1px solid ${HAIRLINE}`, borderRadius: 12, background: '#fff' }}>
+                    {visibleRecipes.length === 0 ? (
+                      <div style={{ padding: '14px 12px', fontSize: 13, color: MUTED }}>
+                        No dishes match. Clear a chip or the search box.
+                      </div>
+                    ) : visibleRecipes.map((r) => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => toggleIncluded(r.id)}
+                        style={{
+                          display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12,
+                          width: '100%', textAlign: 'left', border: 'none',
+                          borderBottom: `1px solid ${HAIRLINE}`, background: includeIds.includes(r.id) ? '#F3F8F4' : 'transparent',
+                          padding: '9px 12px', fontSize: 13, fontWeight: includeIds.includes(r.id) ? 700 : 500,
+                          color: INK, cursor: 'pointer', fontFamily: 'inherit',
+                        }}
+                      >
+                        <span>{includeIds.includes(r.id) ? '✓ ' : '+ '}{r.name}</span>
+                        <span style={{ fontSize: 11, color: MUTED, whiteSpace: 'nowrap', fontWeight: 500 }}>
+                          {[r.cuisine, r.dish_type ? DISH_LABEL[r.dish_type] || r.dish_type : null]
+                            .filter(Boolean).join(' · ') || 'untagged'}
+                        </span>
+                      </button>
+                    ))}
                   </div>
                 </div>
               </section>
