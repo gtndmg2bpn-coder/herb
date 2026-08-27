@@ -24,7 +24,12 @@ import {
 import { CookStepper } from '../../components/CookStepper';
 import { recalcTargets } from '../../lib/recalcTargets';
 
-const MEALS = ['breakfast', 'lunch', 'dinner'];
+const MEALS = ['breakfast', 'snack_am', 'lunch', 'snack_pm', 'dinner'];
+// Display only — the stored values are the keys above.
+const MEAL_LABELS = {
+  breakfast: 'Breakfast', snack_am: 'Morning snack', lunch: 'Lunch',
+  snack_pm: 'Afternoon snack', dinner: 'Dinner', snack: 'Snack',
+};
 const LOCATIONS = ['fridge', 'freezer', 'cupboard'];
 const SPEND_CATEGORIES = ['grocery', 'eating_out', 'sundry'];
 // The 14 UK major allergens.
@@ -64,8 +69,11 @@ const GREEN = '#5E7A63';
 // Pastel washes: meal slots and pantry appliances, from the design file.
 const MEAL_WASHES = {
   breakfast: 'linear-gradient(155deg,#F1E7D5,#F7F0E2)',
+  snack_am: 'linear-gradient(155deg,#F6EDE0,#FBF6EE)',
   lunch: 'linear-gradient(155deg,#C8E6C9,#E8F5E9)',
+  snack_pm: 'linear-gradient(155deg,#E4F0E5,#F1F8F1)',
   dinner: 'linear-gradient(155deg,#BCD7E9,#DCEBF3)',
+  snack: 'linear-gradient(155deg,#F6EDE0,#FBF6EE)',
 };
 const LOCATION_STYLES = {
   fridge: { wash: 'linear-gradient(160deg,#BCD7E9,#E3EEF6)', textColor: '#1E3A52' },
@@ -1281,7 +1289,8 @@ export default function DashboardPage() {
                 const canCook = isLegacySlot || isCookDay;
                 const sourceLabel = isLegacySlot || !slot ? null
                   : isCookDay ? 'cook this'
-                  : slot.fill_source === 'freezer_pull' || slot.fill_source === 'batch_freeze' ? 'from the freezer'
+                  : slot.fill_source === 'freezer_pull' ? 'from the freezer'
+                  : slot.fill_source === 'batch_freeze' ? (slot.cook_date ? `frozen from ${dayLabel(slot.cook_date)}'s batch` : 'from the freezer')
                   : slot.fill_source === 'fridge_pull' ? 'from the fridge'
                   : slot.fill_source === 'batch_cook' && slot.cook_date ? `from ${dayLabel(slot.cook_date)}'s batch`
                   : slot.fill_source === 'fresh_cook' && slot.cook_date ? `leftover from ${dayLabel(slot.cook_date)}`
@@ -1289,7 +1298,7 @@ export default function DashboardPage() {
 
                 return (
                   <div key={meal} style={{ background: MEAL_WASHES[meal], borderRadius: 10, padding: 8, fontSize: 11 }}>
-                    <div style={{ textTransform: 'uppercase', letterSpacing: '.05em', color: MUTED, fontWeight: 600, fontSize: 9 }}>{meal}</div>
+                    <div style={{ textTransform: 'uppercase', letterSpacing: '.05em', color: MUTED, fontWeight: 600, fontSize: 9 }}>{MEAL_LABELS[meal] || meal}</div>
 
                     {slot?.eating_out ? (
                       <>
