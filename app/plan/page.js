@@ -37,6 +37,18 @@ const eyebrowStyle = {
   marginBottom: 12,
 };
 
+// Every plannable meal, in day order. snack_am / snack_pm are separate slots so a
+// morning and an afternoon snack can both sit on one date — plan_slots is unique on
+// (user, date, meal), so they cannot share one 'snack' key. Both draw the same
+// 'snack' recipe tag: a dish is tagged for what it IS, not for when it is eaten.
+const PLANNABLE_MEALS = [
+  { key: 'breakfast', label: 'Breakfast' },
+  { key: 'snack_am',  label: 'Morning snack' },
+  { key: 'lunch',     label: 'Lunch' },
+  { key: 'snack_pm',  label: 'Afternoon snack' },
+  { key: 'dinner',    label: 'Dinner' },
+];
+
 // The 14 UK major allergens. Codes MUST equal profiles.allergens /
 // recipe_allergens.contains verbatim — they are matched, not displayed.
 const ALLERGENS = ['celery', 'gluten', 'crustaceans', 'eggs', 'fish', 'lupin', 'milk', 'molluscs', 'mustard', 'tree_nuts', 'peanuts', 'sesame', 'soybeans', 'sulphites'];
@@ -137,6 +149,27 @@ export default function PlanPage() {
         .filter((lot) => lot.expiry_date && lot.expiry_date <= useByLimit)
         .map((lot) => ({ ...lot, recipeName: nameById[lot.recipe_id] || 'A recipe' }))
         .sort((a, b) => (a.expiry_date < b.expiry_date ? -1 : 1));
+
+      // Restore this week's saved constraints. save_plan_constraints has always
+      // written them and NOTHING has ever read them back — so every visit to
+      // /plan reset to dinner-only with no outs, no batch days and no appetite,
+      // silently discarding what was saved. That is why breakfast kept coming
+      // back unticked. get_plan_inputs already returns them.
+      try {
+        const { data: inputs } = await supabase.rpc('get_plan_inputs', { p_week_start: start });
+        const saved = inputs?.constraints;
+        if (!cancelled && saved && typeof saved === 'object') {
+          if (Array.isArray(saved.meals_to_plan) && saved.meals_to_plan.length) setMealsToPlan(saved.meals_to_plan);
+          if (Array.isArray(saved.outs)) setOuts(saved.outs);
+          if (Array.isArray(saved.batch_days)) setBatchDays(saved.batch_days);
+          if (Array.isArray(saved.guests)) setGuests(saved.guests);
+          const ap = saved.appetite || {};
+          setAvoidMeat(!!ap.avoid_meat);
+          setCuisine(ap.cuisine || '');
+          if (Array.isArray(ap.avoid_allergens)) setWeekAllergens(ap.avoid_allergens);
+          if (Array.isArray(ap.include_recipe_ids)) setIncludeIds(ap.include_recipe_ids);
+        }
+      } catch { /* no saved week yet — start from the defaults */ }
 
       setProfileAllergens(profileRow?.allergens || []);
       setDislikedIds(profileRow?.disliked_recipe_ids || []);
@@ -361,19 +394,13 @@ export default function PlanPage() {
               {/* ── 1 · Plan which meals? (Scope) ─────────────────────── */}
               <section style={cardStyle}>
                 <div style={eyebrowStyle}>Plan which meals?</div>
-                <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={mealsToPlan.includes('breakfast')} onChange={() => toggleMeal('breakfast')} style={{ accentColor: INK, width: 18, height: 18 }} />
-                    Breakfast
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={mealsToPlan.includes('lunch')} onChange={() => toggleMeal('lunch')} style={{ accentColor: INK, width: 18, height: 18 }} />
-                    Lunch
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={mealsToPlan.includes('dinner')} onChange={() => toggleMeal('dinner')} style={{ accentColor: INK, width: 18, height: 18 }} />
-                    Dinner
-                  </label>
+                <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+                  {PLANNABLE_MEALS.map((m) => (
+                    <label key={m.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={mealsToPlan.includes(m.key)} onChange={() => toggleMeal(m.key)} style={{ accentColor: INK, width: 18, height: 18 }} />
+                      {m.label}
+                    </label>
+                  ))}
                 </div>
               </section>
 
