@@ -37,6 +37,15 @@ const eyebrowStyle = {
   marginBottom: 12,
 };
 
+// The 14 UK major allergens. Codes MUST equal profiles.allergens /
+// recipe_allergens.contains verbatim — they are matched, not displayed.
+const ALLERGENS = ['celery', 'gluten', 'crustaceans', 'eggs', 'fish', 'lupin', 'milk', 'molluscs', 'mustard', 'tree_nuts', 'peanuts', 'sesame', 'soybeans', 'sulphites'];
+const ALLERGEN_LABELS = {
+  celery: 'Celery', gluten: 'Gluten', crustaceans: 'Crustaceans', eggs: 'Eggs', fish: 'Fish',
+  lupin: 'Lupin', milk: 'Milk', molluscs: 'Molluscs', mustard: 'Mustard', tree_nuts: 'Tree nuts',
+  peanuts: 'Peanuts', sesame: 'Sesame', soybeans: 'Soybeans', sulphites: 'Sulphites',
+};
+
 // Small pill toggle used for "Freezer first" and "Off meat".
 function Toggle({ on, onChange, label }) {
   return (
@@ -68,6 +77,12 @@ export default function PlanPage() {
   const [avoidMeat, setAvoidMeat] = useState(false);
   const [cuisine, setCuisine] = useState('');
   const [guests, setGuests] = useState([]);       // array of { date, meal, count }
+  const [weekAllergens, setWeekAllergens] = useState([]);  // THIS WEEK only
+  const [includeIds, setIncludeIds] = useState([]);        // restrict the week to these recipes
+  const [recipeList, setRecipeList] = useState([]);        // {id, name} for the picker
+  const [recipeSearch, setRecipeSearch] = useState('');
+  const [profileAllergens, setProfileAllergens] = useState([]);  // permanent, read-only here
+  const [dislikedIds, setDislikedIds] = useState([]);            // permanent, read-only here
 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -105,6 +120,12 @@ export default function PlanPage() {
 
       if (cancelled) return;
 
+      const { data: profileRow } = await supabase
+        .from('profiles')
+        .select('allergens, disliked_recipe_ids')
+        .eq('id', uid)
+        .maybeSingle();
+
       const nameById = {};
       for (const recipe of recipeRows || []) nameById[recipe.id] = recipe.name;
 
@@ -117,6 +138,9 @@ export default function PlanPage() {
         .map((lot) => ({ ...lot, recipeName: nameById[lot.recipe_id] || 'A recipe' }))
         .sort((a, b) => (a.expiry_date < b.expiry_date ? -1 : 1));
 
+      setProfileAllergens(profileRow?.allergens || []);
+      setDislikedIds(profileRow?.disliked_recipe_ids || []);
+      setRecipeList((recipeRows || []).map((r) => ({ id: r.id, name: r.name })).sort((a, b) => a.name.localeCompare(b.name)));
       setWeekStart(start);
       setDays(weekDays);
       setFreezerLots(dueLots);
@@ -140,6 +164,16 @@ export default function PlanPage() {
     setBatchDays((cur) => cur.filter((d) => inWindow.has(d)));
     setGuests((cur) => cur.filter((g) => inWindow.has(g.date)));
     setPlanResult(null);
+    setSaved(false);
+  }
+
+  function toggleWeekAllergen(code) {
+    setWeekAllergens((cur) => (cur.includes(code) ? cur.filter((x) => x !== code) : [...cur, code]));
+    setSaved(false);
+  }
+
+  function toggleIncluded(id) {
+    setIncludeIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
     setSaved(false);
   }
 
@@ -170,7 +204,14 @@ export default function PlanPage() {
       meals_to_plan: mealsToPlan,
       outs: outs,
       batch_days: batchDays,
-      appetite: { avoid_meat: avoidMeat, cuisine: cuisine || null },
+      appetite: {
+        avoid_meat: avoidMeat,
+        cuisine: cuisine || null,
+        avoid_allergens: weekAllergens,
+        include_recipe_ids: includeIds,
+      },
+      allergens: profileAllergens,
+      exclude_recipe_ids: dislikedIds,
       guests: guests.filter((g) => g.date && g.meal && g.count > 0),
       household: 1,
     };
@@ -197,7 +238,14 @@ export default function PlanPage() {
         meals_to_plan: mealsToPlan,
         outs: outs,
         batch_days: batchDays,
-        appetite: { avoid_meat: avoidMeat, cuisine: cuisine || null },
+        appetite: {
+          avoid_meat: avoidMeat,
+          cuisine: cuisine || null,
+          avoid_allergens: weekAllergens,          // this week only
+          include_recipe_ids: includeIds,          // empty = the whole book
+        },
+        allergens: profileAllergens,               // PERMANENT — the planner must never violate these
+        exclude_recipe_ids: dislikedIds,           // PERMANENT
         guests: guests.filter((g) => g.date && g.meal && g.count > 0),
         household: 1,
       };
@@ -233,6 +281,16 @@ export default function PlanPage() {
           recipePool = recipePool.map((r) => (tagsById[r.id] ? { ...r, meal_types: tagsById[r.id] } : r));
         }
       } catch { /* fall through with the unmerged pool */ }
+
+      // Allergens are matched against recipe_allergens.contains, exactly as the
+      // dashboard's Swap chooser does. If this read fails we must NOT plan blind —
+      // an unfiltered plan could propose a declared allergen — so we stop instead.
+      const { data: allergenRows, error: allergenErr } = await supabase
+        .from('recipe_allergens')
+        .select('recipe_id, contains');
+      if (allergenErr) throw allergenErr;
+      const allergensById = Object.fromEntries((allergenRows || []).map((row) => [row.recipe_id, row.contains || []]));
+      recipePool = recipePool.map((r) => ({ ...r, allergens: allergensById[r.id] || [] }));
 
       const result = generatePlan(inputs.constraints, inputs.inventory, recipePool, {
         weekStart, seed: useSeed,
@@ -442,7 +500,98 @@ export default function PlanPage() {
               <section style={cardStyle}>
                 <div style={eyebrowStyle}>This week&rsquo;s appetite</div>
                 <Toggle on={avoidMeat} onChange={(value) => { setAvoidMeat(value); setSaved(false); }} label="Off meat this week" />
-                <div style={{ marginTop: 16 }}>
+                <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>
+                  Drops beef, pork, lamb and chicken. Fish and vegetarian dishes stay.
+                </div>
+
+                {/* Avoid this week — temporary, separate from your profile allergies */}
+                <div style={{ marginTop: 20 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>Avoid this week</div>
+                  <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
+                    Just for these seven days — vegan January, off gluten, too hot for heavy food.
+                    {profileAllergens.length > 0 ? ' Your profile allergies are always excluded and are not listed here.' : ''}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {ALLERGENS.filter((code) => !profileAllergens.includes(code)).map((code) => {
+                      const on = weekAllergens.includes(code);
+                      return (
+                        <button
+                          key={code}
+                          type="button"
+                          onClick={() => toggleWeekAllergen(code)}
+                          style={{
+                            border: `1px solid ${on ? INK : HAIRLINE}`, background: on ? INK : '#fff',
+                            color: on ? CREAM : INK, borderRadius: 100, padding: '5px 12px',
+                            fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                          }}
+                        >
+                          {ALLERGEN_LABELS[code]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Pick specific dishes — the recipes have no cuisine tags yet */}
+                <div style={{ marginTop: 22 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>
+                    Only plan these dishes <span style={{ fontWeight: 400, color: MUTED }}>(optional)</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
+                    {includeIds.length === 0
+                      ? `Nothing selected — the planner uses all ${recipeList.length} recipes.`
+                      : `${includeIds.length} selected — the week will be built from these only.`}
+                  </div>
+                  {includeIds.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                      {includeIds.map((id) => (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => toggleIncluded(id)}
+                          style={{ border: 'none', background: GREEN, color: '#fff', borderRadius: 100, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                        >
+                          {recipeList.find((r) => r.id === id)?.name || 'Recipe'} ×
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => { setIncludeIds([]); setSaved(false); }}
+                        style={{ border: `1px solid ${HAIRLINE}`, background: '#fff', color: MUTED, borderRadius: 100, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                      >
+                        Clear all
+                      </button>
+                    </div>
+                  )}
+                  <input
+                    type="text"
+                    placeholder="Search your recipes…"
+                    value={recipeSearch}
+                    onChange={(event) => setRecipeSearch(event.target.value)}
+                    style={{ ...inputStyle, width: '100%', maxWidth: 380, background: '#fff', marginBottom: 8 }}
+                  />
+                  <div style={{ maxHeight: 200, overflowY: 'auto', border: `1px solid ${HAIRLINE}`, borderRadius: 12, background: '#fff' }}>
+                    {recipeList
+                      .filter((r) => r.name.toLowerCase().includes(recipeSearch.trim().toLowerCase()))
+                      .map((r) => (
+                        <button
+                          key={r.id}
+                          type="button"
+                          onClick={() => toggleIncluded(r.id)}
+                          style={{
+                            display: 'block', width: '100%', textAlign: 'left', border: 'none',
+                            borderBottom: `1px solid ${HAIRLINE}`, background: includeIds.includes(r.id) ? '#F3F8F4' : 'transparent',
+                            padding: '9px 12px', fontSize: 13, fontWeight: includeIds.includes(r.id) ? 700 : 500,
+                            color: INK, cursor: 'pointer', fontFamily: 'inherit',
+                          }}
+                        >
+                          {includeIds.includes(r.id) ? '✓ ' : '+ '}{r.name}
+                        </button>
+                      ))}
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 20 }}>
                   <label htmlFor="cuisine" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: MUTED, marginBottom: 6 }}>
                     Fancy a cuisine? <span style={{ fontWeight: 400 }}>(optional)</span>
                   </label>
@@ -454,6 +603,10 @@ export default function PlanPage() {
                     onChange={(event) => { setCuisine(event.target.value); setSaved(false); }}
                     style={{ ...inputStyle, width: '100%', maxWidth: 320, background: '#fff' }}
                   />
+                  <div style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>
+                    Matches recipe names, tags and descriptions. Your recipes carry no cuisine tags yet,
+                    so this is a keyword search — the picker above is the reliable way to steer a week.
+                  </div>
                 </div>
               </section>
 
