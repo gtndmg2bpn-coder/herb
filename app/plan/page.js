@@ -193,7 +193,30 @@ export default function PlanPage() {
       });
       if (readErr) throw readErr;
   
-      const result = generatePlan(inputs.constraints, inputs.inventory, inputs.recipes, {
+      // get_plan_inputs does not select meal_types, so canServe() falls back to
+      // ['lunch','dinner'] for every recipe and the BREAKFAST pool is permanently
+      // empty — no breakfast can ever be planned and breakfast stock can never be
+      // pulled. Read the tags straight from recipes and merge them in before the
+      // engine sees the pool. Best-effort: if the read fails, plan exactly as
+      // before rather than losing the week.
+      let recipePool = inputs.recipes || [];
+      try {
+        const { data: tagRows, error: tagErr } = await supabase
+          .from('recipes')
+          .select('id, meal_type, meal_types');
+        if (!tagErr && Array.isArray(tagRows)) {
+          const tagsById = {};
+          for (const r of tagRows) {
+            const list = Array.isArray(r.meal_types) && r.meal_types.length
+              ? r.meal_types
+              : (r.meal_type ? [r.meal_type] : null);
+            if (list) tagsById[r.id] = list;
+          }
+          recipePool = recipePool.map((r) => (tagsById[r.id] ? { ...r, meal_types: tagsById[r.id] } : r));
+        }
+      } catch { /* fall through with the unmerged pool */ }
+
+      const result = generatePlan(inputs.constraints, inputs.inventory, recipePool, {
         weekStart, seed: useSeed,
       });
   
