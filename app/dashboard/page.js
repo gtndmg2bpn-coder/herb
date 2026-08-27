@@ -835,6 +835,7 @@ export default function DashboardPage() {
   async function submitWeight() {
     let weightKg;
     if (profile?.preferred_units === 'imperial') {
+      if (String(weightStones).trim() === '' && String(weightPounds).trim() === '') return; // empty — stray tap, do nothing
       const stones = Number(weightStones || 0);
       const pounds = Number(weightPounds || 0);
       if (!Number.isFinite(stones) || !Number.isFinite(pounds) || stones < 0 || pounds < 0 || pounds >= 14 || (stones === 0 && pounds === 0)) {
@@ -843,7 +844,9 @@ export default function DashboardPage() {
       }
       weightKg = Math.round((stones * 14 + pounds) * 0.45359237 * 100) / 100;
     } else {
-      weightKg = Number(weightInput);
+      const raw = String(weightInput).replace(',', '.').trim();
+      if (raw === '') return; // empty field (e.g. a stray second tap after a successful log) — do nothing
+      weightKg = Number(raw);
       if (!Number.isFinite(weightKg) || weightKg <= 0) {
         setError('Weight must be a positive number.');
         return;
