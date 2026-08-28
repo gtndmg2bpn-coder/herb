@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { getBrowserClient } from '../../lib/supabaseBrowser';
 import { generatePlan } from '../../lib/generatePlan';
+import { planComponents } from '../../lib/planComponents';
 
 // Editorial design tokens (match dashboard / spend / recipe book)
 const INK = '#2A2932';
@@ -140,6 +141,7 @@ export default function PlanPage() {
   const [includeIds, setIncludeIds] = useState([]);        // restrict the week to these recipes
   const [recipeList, setRecipeList] = useState([]);        // {id, name} for the picker
   const [recipeSearch, setRecipeSearch] = useState('');
+  const [userId, setUserId] = useState(null);
   const [profileAllergens, setProfileAllergens] = useState([]);  // permanent, read-only here
   const [dislikedIds, setDislikedIds] = useState([]);            // permanent, read-only here
 
@@ -224,6 +226,7 @@ export default function PlanPage() {
         }
       } catch { /* no saved week yet — start from the defaults */ }
 
+      setUserId(uid);
       setProfileAllergens(profileRow?.allergens || []);
       setDislikedIds(profileRow?.disliked_recipe_ids || []);
       setRecipeList(
@@ -371,36 +374,20 @@ export default function PlanPage() {
       });
       if (readErr) throw readErr;
   
-      // get_plan_inputs does not select meal_types, so canServe() falls back to
-      // ['lunch','dinner'] for every recipe and the BREAKFAST pool is permanently
-      // empty — no breakfast can ever be planned and breakfast stock can never be
-      // pulled. Read the tags straight from recipes and merge them in before the
-      // engine sees the pool. Best-effort: if the read fails, plan exactly as
-      // before rather than losing the week.
-      let recipePool = inputs.recipes || [];
-      try {
-        const { data: tagRows, error: tagErr } = await supabase
-          .from('recipes')
-          .select('id, meal_type, meal_types, cuisine, dish_type');
-        if (!tagErr && Array.isArray(tagRows)) {
-          const tagsById = {};
-          for (const r of tagRows) {
-            const list = Array.isArray(r.meal_types) && r.meal_types.length
-              ? r.meal_types
-              : (r.meal_type ? [r.meal_type] : null);
-            tagsById[r.id] = { meal_types: list, cuisine: r.cuisine || null, dish_type: r.dish_type || null };
-          }
-          // cuisine / dish_type ride in on the same read as meal_types — the engine
-          // matches appetite.cuisines against recipes.cuisine, so an unmerged pool
-          // would make every steer match nothing and blank the week.
-          recipePool = recipePool.map((r) => {
-            const t = tagsById[r.id];
-            if (!t) return r;
-            return { ...r, ...(t.meal_types ? { meal_types: t.meal_types } : {}),
-                     cuisine: t.cuisine, dish_type: t.dish_type };
-          });
-        }
-      } catch { /* fall through with the unmerged pool */ }
+      // BRIDGE ITEM 3 — the client-side merge is RETIRED.
+      //
+      // get_plan_inputs now selects meal_type, meal_types, cuisine and dish_type
+      // itself, so the pool arrives complete and this page no longer re-reads
+      // `recipes` to patch it. That removes the second derivation of the recipe
+      // pool: one query, one shape, one source of truth.
+      //
+      // It also removes a real failure mode. The old merge was best-effort — a
+      // silent catch — so a failed read meant every recipe fell back to
+      // ['lunch','dinner'], the breakfast pool emptied, and the week came back
+      // with seven blank breakfasts and no explanation anywhere.
+      const recipePool0 = inputs.recipes || [];
+
+      let recipePool = recipePool0;
 
       // Allergens are matched against recipe_allergens.contains, exactly as the
       // dashboard's Swap chooser does. If this read fails we must NOT plan blind —
@@ -421,7 +408,83 @@ export default function PlanPage() {
       });
       if (applyErr) throw applyErr;
   
-      setPlanResult({ rationale: result.rationale || [], slotsWritten: applied?.slots_written ?? 0 });
+      // ── COMPONENT (prep) PLANNING ────────────────────────────────────────
+      // Runs AFTER the plan exists, and that order is not incidental: component
+      // demand is a CONSEQUENCE of which dishes landed on which days, so it
+      // cannot be known before there is a plan to read.
+      //
+      // Best-effort on purpose. A component is a convenience — it saves money
+      // and a shop — so a failed read must never cost you the week. That is the
+      // opposite of the allergen read above, which throws rather than plan
+      // blind. Convenience degrades; safety stops.
+      let componentPlan = null;
+      try {
+        const [{ data: compRows }, { data: inputRows }] = await Promise.all([
+          supabase.from('components')
+            .select('id, name, produces_ingredient_id, yield_qty, yield_unit, shelf_life_days, location')
+            .eq('active', true),
+          supabase.from('component_inputs').select('component_id, ingredient_id, quantity, unit'),
+        ]);
+        const producible = [...new Set((compRows || []).map((c) => c.produces_ingredient_id))];
+        const plannedIds = [...new Set(result.slots.filter((s) => s.recipe_id).map((s) => s.recipe_id))];
+
+        if (producible.length && plannedIds.length) {
+          const inputsByComponent = {};
+          for (const row of inputRows || []) {
+            (inputsByComponent[row.component_id] ||= []).push({
+              ingredient_id: row.ingredient_id, quantity: Number(row.quantity),
+            });
+          }
+          const components = (compRows || []).map((c) => ({
+            ...c,
+            yield_qty: Number(c.yield_qty),
+            shelf_life_days: Number(c.shelf_life_days),
+            inputs: inputsByComponent[c.id] || [],
+          }));
+
+          // Only the producible ingredients, and only for dishes that actually
+          // landed. Asking for the whole join would pull ~390 rows to use six.
+          const { data: riRows } = await supabase
+            .from('recipe_ingredients')
+            .select('recipe_id, ingredient_id, quantity')
+            .in('recipe_id', plannedIds)
+            .in('ingredient_id', producible);
+          const needsByRecipe = {};
+          for (const row of riRows || []) {
+            (needsByRecipe[row.recipe_id] ||= []).push({
+              ingredient_id: row.ingredient_id, quantity: Number(row.quantity),
+            });
+          }
+
+          // Existing stock of the produced ingredient. Netted per
+          // (ingredient, expiry_date) — deliberately the SAME bucket shape as
+          // get_plan_inputs and eat_portions use for portions. A lot is a lot;
+          // the write path and the planner must agree on what one is.
+          const { data: stockRows } = await supabase
+            .from('pantry_log')
+            .select('ingredient_id, quantity, expiry_date')
+            .eq('user_id', userId)
+            .eq('item_kind', 'ingredient')
+            .in('ingredient_id', producible);
+          const buckets = {};
+          for (const row of stockRows || []) {
+            const key = `${row.ingredient_id}|${row.expiry_date || ''}`;
+            buckets[key] ||= { ingredient_id: row.ingredient_id, expiry_date: row.expiry_date, quantity: 0 };
+            buckets[key].quantity += Number(row.quantity);
+          }
+          const stock = Object.values(buckets).filter((l) => l.quantity > 0);
+
+          componentPlan = planComponents(result.slots, needsByRecipe, components, stock, {
+            weekStart, batchDays,
+          });
+        }
+      } catch { /* a component is a convenience — never lose the week over one */ }
+
+      setPlanResult({
+        rationale: result.rationale || [],
+        slotsWritten: applied?.slots_written ?? 0,
+        components: componentPlan,
+      });
       setSaved(true);
     } catch (e) {
       setError(e?.message || String(e));
@@ -990,6 +1053,50 @@ export default function PlanPage() {
                       <li key={i}>{r}</li>
                     ))}
                   </ul>
+
+                  {/* ── Prep cooks ───────────────────────────────────────────
+                      A component never occupies a slot, so it would otherwise be
+                      invisible: the plan would quietly assume pulled chicken
+                      exists without ever telling you to roast the bird. This is
+                      where the plan asks for it. ── */}
+                  {planResult.components && planResult.components.cooks.length > 0 && (
+                    <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${HAIRLINE}` }}>
+                      <div style={eyebrowStyle}>Prep to cook</div>
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        {planResult.components.cooks.map((c, i) => (
+                          <div key={i} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 15, fontWeight: 600 }}>
+                              {c.component_name}
+                            </span>
+                            <span style={{ fontSize: 13, color: MUTED, whiteSpace: 'nowrap' }}>
+                              {dayLabel(c.cook_date)} · makes {c.yield_qty}{c.yield_unit} · use by {dayLabel(c.expiry_date)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: 12, color: MUTED, marginTop: 10 }}>
+                        Cooked alongside your batch day and used across the week — it fills no meal slot of its own.
+                      </div>
+                    </div>
+                  )}
+
+                  {planResult.components && planResult.components.shortfalls.length > 0 && (
+                    <div style={{ marginTop: 16, background: '#FDF6E7', border: `1px solid ${AMBER}`, borderRadius: 12, padding: '12px 14px' }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#B26B00', marginBottom: 6 }}>
+                        Not everything is covered
+                      </div>
+                      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: '#7A4A00', lineHeight: 1.6 }}>
+                        {planResult.components.shortfalls.map((s, i) => (
+                          <li key={i}>
+                            {Math.round(s.short_by)}g short for {s.meal} on {dayLabel(s.date)} — {s.reason}.
+                          </li>
+                        ))}
+                      </ul>
+                      <div style={{ fontSize: 12, color: MUTED, marginTop: 8 }}>
+                        Buy it ready-made or move the dish. Nothing is substituted for you.
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
