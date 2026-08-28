@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { getBrowserClient } from '../../lib/supabaseBrowser';
 import { generatePlan } from '../../lib/generatePlan';
 import { planComponents } from '../../lib/planComponents';
+import { isoDate, addDays, dayLabel } from '../../lib/dates';
 
 // Editorial design tokens (match dashboard / spend / recipe book)
 const INK = '#2A2932';
@@ -19,92 +20,6 @@ const GREEN = '#7BB88F';
 const AMBER = '#E9C067';
 
 // Helpers copied verbatim from app/dashboard/page.js (local functions, not importable)
-function isoDate(date) { return date.toISOString().slice(0, 10); }
-function addDays(iso, days) { const d = new Date(`${iso}T00:00:00`); d.setDate(d.getDate() + days); return isoDate(d); }
-function dayLabel(iso) { return new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }); }
-
-const cardStyle = {
-  background: '#FFFFFF',
-  border: `1px solid ${HAIRLINE}`,
-  borderRadius: 20,
-  padding: '24px 28px',
-};
-const eyebrowStyle = {
-  fontSize: 12,
-  fontWeight: 700,
-  letterSpacing: '.14em',
-  textTransform: 'uppercase',
-  color: MUTED,
-  marginBottom: 12,
-};
-
-// Every plannable meal, in day order. snack_am / snack_pm are separate slots so a
-// morning and an afternoon snack can both sit on one date — plan_slots is unique on
-// (user, date, meal), so they cannot share one 'snack' key. Both draw the same
-// 'snack' recipe tag: a dish is tagged for what it IS, not for when it is eaten.
-const PLANNABLE_MEALS = [
-  { key: 'breakfast', label: 'Breakfast' },
-  { key: 'snack_am',  label: 'Morning snack' },
-  { key: 'lunch',     label: 'Lunch' },
-  { key: 'snack_pm',  label: 'Afternoon snack' },
-  { key: 'dinner',    label: 'Dinner' },
-];
-
-// The 14 UK major allergens. Codes MUST equal profiles.allergens /
-// recipe_allergens.contains verbatim — they are matched, not displayed.
-const ALLERGENS = ['celery', 'gluten', 'crustaceans', 'eggs', 'fish', 'lupin', 'milk', 'molluscs', 'mustard', 'tree_nuts', 'peanuts', 'sesame', 'soybeans', 'sulphites'];
-const ALLERGEN_LABELS = {
-  celery: 'Celery', gluten: 'Gluten', crustaceans: 'Crustaceans', eggs: 'Eggs', fish: 'Fish',
-  lupin: 'Lupin', milk: 'Milk', molluscs: 'Molluscs', mustard: 'Mustard', tree_nuts: 'Tree nuts',
-  peanuts: 'Peanuts', sesame: 'Sesame', soybeans: 'Soybeans', sulphites: 'Sulphites',
-};
-
-// Cuisine + dish-type tags. These MUST equal recipes.cuisine / recipes.dish_type
-// verbatim — they are matched against the column, not displayed from it, so a
-// label change here without the matching UPDATE silently empties a chip.
-//
-// Two dimensions on purpose. "Indian" and "a salad" are different questions and
-// people ask both: pick a cuisine to steer the week's flavour, pick a dish type
-// to steer its shape. Either alone works; together they narrow.
-const CUISINE_TAGS = [
-  'British & Classic', 'Italian', 'Indian', 'Thai', 'Asian', 'Spanish',
-  'Mexican', 'Middle Eastern', 'Mediterranean', 'French', 'Anytime',
-];
-// 'Anytime' is not a cuisine — it is the honest label for the dishes that have
-// none: shakes, yoghurt bowls, cottage cheese. Better a truthful bucket than
-// pretending a protein shake is British.
-
-const DISH_TAGS = [
-  { key: 'salad', label: 'Salads' },
-  { key: 'grill', label: 'Grills & steaks' },
-  { key: 'curry', label: 'Curries' },
-  { key: 'pasta', label: 'Pasta' },
-  { key: 'roast', label: 'Roasts & slow-cooked' },
-  { key: 'stew', label: 'Stews' },
-  { key: 'bowl', label: 'Bowls' },
-  { key: 'breakfast', label: 'Breakfasts' },
-  { key: 'shake', label: 'Shakes' },
-  { key: 'board', label: 'Boards & snacks' },
-];
-const DISH_LABEL = Object.fromEntries(DISH_TAGS.map((d) => [d.key, d.label]));
-
-// One chip, used for cuisines, dish types and the week's allergens.
-function Chip({ on, onClick, children }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        border: `1px solid ${on ? INK : HAIRLINE}`, background: on ? INK : '#fff',
-        color: on ? CREAM : INK, borderRadius: 100, padding: '6px 13px',
-        fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
 // Small pill toggle used for "Freezer first" and "Off meat".
 function Toggle({ on, onChange, label }) {
   return (
@@ -1142,8 +1057,17 @@ export default function PlanPage() {
                               <span style={{ width: 68, fontWeight: 600, color: d.kcal_in_band === false ? '#B26B00' : INK, flexShrink: 0 }}>
                                 {d.kcal} kcal
                               </span>
-                              <span style={{ width: 62, fontWeight: 600, color: d.protein_met === false ? '#B26B00' : INK, flexShrink: 0 }}>
+                              {/* Amber only for a REAL miss. A day 3 g under a
+                                  183 g floor is hit; flagging it identically to
+                                  a day 33 g under buries the only one worth
+                                  acting on. The gap is named in grams, so the
+                                  SIZE of the miss is visible and not just its
+                                  existence. */}
+                              <span style={{ width: 84, fontWeight: 600, color: d.protein_met === false ? '#B26B00' : INK, flexShrink: 0 }}>
                                 {d.protein_g} g P
+                                {d.protein_met === false && d.protein_short_g > 0 ? (
+                                  <span style={{ fontWeight: 500 }}> &minus;{d.protein_short_g}</span>
+                                ) : null}
                               </span>
                               {/* The carb meter is the one number with a hard
                                   edge, so it gets the only bar: a full bar is
