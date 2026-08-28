@@ -1283,10 +1283,18 @@ export default function DashboardPage() {
                 // Legacy rows (fill_source null, written before the column
                 // existed) keep the old behaviour so nothing pre-guard changes.
                 const isLegacySlot = !slot || slot.fill_source == null;
+                // A cook day is not enough — the day must also have ARRIVED.
+                // Without `<= today` the button is live on a slot days out, and
+                // tapping it drains the pantry, mints portions and welds the day
+                // shut, because regeneration only ever deletes UNCOOKED slots.
+                // Four slots in the 28 Aug week were cooked early this way, one
+                // of them three days early. Same mechanism as the 27 Aug
+                // incident, which the cook-day guard alone did not close.
                 const isCookDay =
                   (slot?.fill_source === 'batch_cook' || slot?.fill_source === 'fresh_cook') &&
-                  slot?.cook_date === slot?.slot_date;
-                const canCook = isLegacySlot || isCookDay;
+                  slot?.cook_date === slot?.slot_date &&
+                  slot?.slot_date <= today;
+                const canCook = (isLegacySlot && slotDate <= today) || isCookDay;
                 const sourceLabel = isLegacySlot || !slot ? null
                   : isCookDay ? 'cook this'
                   : slot.fill_source === 'freezer_pull' ? 'from the freezer'
