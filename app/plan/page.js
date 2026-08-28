@@ -399,10 +399,32 @@ export default function PlanPage() {
       const allergensById = Object.fromEntries((allergenRows || []).map((row) => [row.recipe_id, row.contains || []]));
       recipePool = recipePool.map((r) => ({ ...r, allergens: allergensById[r.id] || [] }));
 
-      const result = generatePlan(inputs.constraints, inputs.inventory, recipePool, {
+      // ── BRIDGE ITEMS 4 + 6 — targets reach the engine ────────────────────
+      // get_plan_inputs v4 returns `targets` read LIVE from profiles on every
+      // call. That is item 6 in one line: commit_targets writes profiles,
+      // get_plan_inputs reads profiles, so the next plan generated after a
+      // commit uses the new numbers. There is no cached copy to invalidate and
+      // nothing here to remember to refresh.
+      //
+      // Merging them into the constraints object is NOT the retired
+      // client-side merge — both halves came out of the same RPC call, so
+      // there is still exactly one derivation. What was wrong before was
+      // re-reading `recipes` separately and patching the pool with it.
+      //
+      // `diet` (v5) carries the carb ceiling. 35 g/day belongs to keto, not to
+      // HERB, so the engine holds no diet knowledge at all and takes whatever
+      // ceiling arrives here — including none, which is a real answer for a
+      // plain deficit or a bulk.
+      const planConstraints = {
+        ...inputs.constraints,
+        targets: inputs.targets || null,
+        diet: inputs.diet || null,
+      };
+
+      const result = generatePlan(planConstraints, inputs.inventory, recipePool, {
         weekStart, seed: useSeed,
       });
-  
+
       const { data: applied, error: applyErr } = await supabase.rpc('apply_generated_plan', {
         p_week_start: weekStart, p_slots: result.slots,
       });
@@ -480,10 +502,36 @@ export default function PlanPage() {
         }
       } catch { /* a component is a convenience — never lose the week over one */ }
 
+      // ── BRIDGE ITEM 6 — stamp what this week was planned AGAINST ─────────
+      // Without this, "did my new targets reach the plan?" can only be
+      // answered by regenerating and squinting. The week now records the
+      // numbers it was built on, so a week planned under old targets is
+      // identifiable rather than merely suspected.
+      //
+      // Best-effort on purpose, and the reasoning is the component rule again:
+      // the plan is already written and applied by this point, so failing to
+      // record a stamp must not present as a failed plan. Convenience
+      // degrades; safety stops.
+      try {
+        await supabase.rpc('save_plan_constraints', {
+          p_week_start: weekStart,
+          p_constraints: {
+            ...constraints,
+            planned_against: {
+              targets: inputs.targets || null,
+              diet: inputs.diet || null,
+              carb_ceiling_g: result.macroSummary?.carb_ceiling_g ?? null,
+              at: new Date().toISOString(),
+            },
+          },
+        });
+      } catch { /* the plan is already saved; the stamp is a nicety */ }
+
       setPlanResult({
         rationale: result.rationale || [],
         slotsWritten: applied?.slots_written ?? 0,
         components: componentPlan,
+        macros: result.macroSummary || null,
       });
       setSaved(true);
     } catch (e) {
@@ -1053,6 +1101,78 @@ export default function PlanPage() {
                       <li key={i}>{r}</li>
                     ))}
                   </ul>
+
+                  {/* ── Against your targets (bridge items 4-6) ──────────────
+                      A plan that hit its numbers and a plan that had no numbers
+                      to hit must not look the same on screen. When targets are
+                      missing this panel says so and says WHICH silence it is;
+                      when they are present it shows the day-by-day result, so
+                      "did my new targets reach this plan?" is answered by
+                      looking rather than by regenerating and squinting. ── */}
+                  {planResult.macros && !planResult.macros.targeting && (
+                    <div style={{ marginTop: 16, background: '#FDF6E7', border: `1px solid ${AMBER}`, borderRadius: 12, padding: '12px 14px' }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#B26B00', marginBottom: 6 }}>
+                        Planned without targets
+                      </div>
+                      <div style={{ fontSize: 13, color: '#7A4A00', lineHeight: 1.6 }}>
+                        {planResult.macros.source === 'no_profile'
+                          ? 'No profile was found, so calories and protein were not taken into account.'
+                          : 'Your profile has no calorie or protein target saved, so calories and protein were not taken into account.'}
+                      </div>
+                      <Link href="/dashboard" style={{ display: 'inline-block', marginTop: 8, fontSize: 13, fontWeight: 600, color: '#7A4A00' }}>
+                        Set your targets on the dashboard →
+                      </Link>
+                    </div>
+                  )}
+
+                  {planResult.macros && planResult.macros.targeting && (
+                    <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${HAIRLINE}` }}>
+                      <div style={eyebrowStyle}>Against your targets</div>
+                      <div style={{ fontSize: 13, color: MUTED, marginBottom: 12 }}>
+                        {planResult.macros.target_kcal} kcal · {planResult.macros.target_protein_g} g protein ·
+                        {' '}carbs capped at {planResult.macros.carb_ceiling_g} g a day
+                      </div>
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        {planResult.macros.per_day.map((d) => {
+                          const ceiling = planResult.macros.carb_ceiling_g || 35;
+                          const carbPct = Math.min(100, Math.round((d.carbs_g / ceiling) * 100));
+                          return (
+                            <div key={d.slot_date} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
+                              <span style={{ width: 96, color: MUTED, flexShrink: 0 }}>{dayLabel(d.slot_date)}</span>
+                              <span style={{ width: 68, fontWeight: 600, color: d.kcal_in_band === false ? '#B26B00' : INK, flexShrink: 0 }}>
+                                {d.kcal} kcal
+                              </span>
+                              <span style={{ width: 62, fontWeight: 600, color: d.protein_met === false ? '#B26B00' : INK, flexShrink: 0 }}>
+                                {d.protein_g} g P
+                              </span>
+                              {/* The carb meter is the one number with a hard
+                                  edge, so it gets the only bar: a full bar is
+                                  the ceiling, not a target to reach. */}
+                              <span style={{ flex: 1, minWidth: 40, height: 6, background: HAIRLINE, borderRadius: 3, overflow: 'hidden' }}>
+                                <span style={{ display: 'block', width: `${carbPct}%`, height: '100%', background: carbPct >= 90 ? AMBER : GREEN }} />
+                              </span>
+                              <span style={{ width: 54, textAlign: 'right', color: MUTED, flexShrink: 0 }}>
+                                {d.carbs_g} g C
+                              </span>
+                              {/* The fat lever, stated in grams. "Add some oil"
+                                  is not a plan; "+12 g olive oil" is. */}
+                              <span style={{ width: 46, textAlign: 'right', color: d.fat_top_up_g > 0 ? INK : HAIRLINE, flexShrink: 0 }}>
+                                {d.fat_top_up_g > 0 ? `+${d.fat_top_up_g} g` : '—'}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div style={{ fontSize: 12, color: MUTED, marginTop: 10 }}>
+                        The week averages {planResult.macros.avg_daily_kcal} kcal a day
+                        {planResult.macros.week_in_band ? ', inside' : ', outside'} the weekly band.
+                        Protein is driven, carbs are capped, and calories are closed
+                        {planResult.macros.fat_lever
+                          ? ` with ${planResult.macros.fat_lever.label} — ${planResult.macros.fat_added_total_g} g across the week, spread over the meals above.`
+                          : ' by the dishes alone; this diet sets no fat lever, so short days stay short.'}
+                      </div>
+                    </div>
+                  )}
 
                   {/* ── Prep cooks ───────────────────────────────────────────
                       A component never occupies a slot, so it would otherwise be
