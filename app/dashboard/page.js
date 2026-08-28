@@ -23,6 +23,7 @@ import {
 } from '../../lib/actions';
 import { CookStepper } from '../../components/CookStepper';
 import { recalcTargets } from '../../lib/recalcTargets';
+import { isoDate, addDays, dayLabel } from '../../lib/dates';
 
 const MEALS = ['breakfast', 'snack_am', 'lunch', 'snack_pm', 'dinner'];
 // Display only — the stored values are the keys above.
@@ -80,20 +81,6 @@ const LOCATION_STYLES = {
   freezer: { wash: 'linear-gradient(160deg,#DCEBF3,#F6FAFC)', textColor: '#1E3A52' },
   cupboard: { wash: 'linear-gradient(160deg,#F1E7D5,#F7F0E2)', textColor: '#5B4530' },
 };
-
-function isoDate(date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function addDays(iso, days) {
-  const date = new Date(`${iso}T00:00:00`);
-  date.setDate(date.getDate() + days);
-  return isoDate(date);
-}
-
-function dayLabel(iso) {
-  return new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-}
 
 function dayLabelShort(iso) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' });
@@ -1290,13 +1277,25 @@ export default function DashboardPage() {
                 // Four slots in the 28 Aug week were cooked early this way, one
                 // of them three days early. Same mechanism as the 27 Aug
                 // incident, which the cook-day guard alone did not close.
-                const isCookDay =
+                //
+                // TWO DIFFERENT QUESTIONS, which were being answered by one flag.
+                //   isOwnCook — IS this slot its own cook? A property of the
+                //     slot, nothing to do with what day it is today. Decides the
+                //     LABEL.
+                //   isCookDay — may the Cook BUTTON be live? The cook day AND a
+                //     day that has arrived. That is the guard above and it keeps
+                //     its date test, unchanged.
+                // Sharing one flag meant every FUTURE cook read "leftover from
+                // <its own date>" — a Saturday dish labelled as a leftover of
+                // Saturday. The guard was right; it was just also being asked a
+                // question it has no business answering.
+                const isOwnCook =
                   (slot?.fill_source === 'batch_cook' || slot?.fill_source === 'fresh_cook') &&
-                  slot?.cook_date === slot?.slot_date &&
-                  slot?.slot_date <= today;
+                  slot?.cook_date === slot?.slot_date;
+                const isCookDay = isOwnCook && slot?.slot_date <= today;
                 const canCook = (isLegacySlot && slotDate <= today) || isCookDay;
                 const sourceLabel = isLegacySlot || !slot ? null
-                  : isCookDay ? 'cook this'
+                  : isOwnCook ? 'cook this'
                   : slot.fill_source === 'freezer_pull' ? 'from the freezer'
                   : slot.fill_source === 'batch_freeze' ? (slot.cook_date ? `frozen from ${dayLabel(slot.cook_date)}'s batch` : 'from the freezer')
                   : slot.fill_source === 'fridge_pull' ? 'from the fridge'
