@@ -1088,8 +1088,19 @@ export default function PlanPage() {
               {/* ── Generate Result Panel ──────────────────────────────────────────────── */}
               {planResult && (
                 <div style={{ ...cardStyle, marginTop: 12 }}>
+                  {/* "32 slots set" read as "this week has 32 slots" when it
+                      meant "32 of the 35 got a meal". Say both numbers, so a
+                      week with holes in it announces the holes. */}
                   <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
-                    Planned — {planResult.slotsWritten} slots set for this week.
+                    {(() => {
+                      const planned = planResult.macros
+                        ? planResult.macros.per_day.reduce((n, d) => n + d.slots_planned, 0)
+                        : null;
+                      const set = planResult.slotsWritten;
+                      return planned && planned !== set
+                        ? `Planned — ${set} of ${planned} slots filled, ${planned - set} left empty.`
+                        : `Planned — ${set} slots set for this week.`;
+                    })()}
                   </div>
                   <Link href="/dashboard" style={{ display: 'inline-block', fontSize: 15, fontWeight: 600, color: INK, textDecoration: 'underline', marginBottom: 16 }}>
                     View plan on dashboard →
