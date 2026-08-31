@@ -1,0 +1,132 @@
+name: HERB Table — Connection Test
+
+# Manual trigger only for now. No schedule until this passes.
+on:
+  workflow_dispatch:
+
+jobs:
+  test-connection:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      # ---------------------------------------------------------------
+      # STEP 1 — check out the repo using GH_PAT.
+      # If GH_PAT is wrong or lacks 'repo' scope, this step fails.
+      # ---------------------------------------------------------------
+      - name: Checkout repo with GH_PAT
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+
+      # ---------------------------------------------------------------
+      # STEP 2 — confirm the secrets are present and non-empty.
+      # Prints only lengths and prefixes. Never the values.
+      # ---------------------------------------------------------------
+      - name: Check secrets are present
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "FAIL: ANTHROPIC_API_KEY is empty or missing"
+            exit 1
+          fi
+          if [ -z "$GH_PAT" ]; then
+            echo "FAIL: GH_PAT is empty or missing"
+            exit 1
+          fi
+          echo "ANTHROPIC_API_KEY present, length ${#ANTHROPIC_API_KEY}"
+          echo "GH_PAT present, length ${#GH_PAT}"
+          echo "Both secrets found."
+
+      # ---------------------------------------------------------------
+      # STEP 3 — call the Anthropic API.
+      # Proves the key is valid AND billing is active.
+      # ---------------------------------------------------------------
+      - name: Call the Anthropic API
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          RESPONSE=$(curl -s -w "\n%{http_code}" https://api.anthropic.com/v1/messages \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            -d '{
+              "model": "claude-sonnet-4-5",
+              "max_tokens": 100,
+              "messages": [
+                {"role": "user", "content": "Reply with exactly this and nothing else: HERB table connection confirmed."}
+              ]
+            }')
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          echo "HTTP status: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "FAIL: API call did not return 200."
+            echo "Response body:"
+            echo "$BODY"
+            echo ""
+            echo "401 = bad API key. 400 = malformed request."
+            echo "429 = rate limited. 402 or credit error = billing not active."
+            exit 1
+          fi
+
+          echo "API call succeeded."
+          echo "$BODY" > /tmp/api_response.json
+
+      # ---------------------------------------------------------------
+      # STEP 4 — write a file and commit it back using GH_PAT.
+      # This is the write path. If this passes, agents can land code.
+      # ---------------------------------------------------------------
+      - name: Write proof file and commit
+        run: |
+          mkdir -p .herb-table
+
+          REPLY=$(python3 -c "
+          import json
+          with open('/tmp/api_response.json') as f:
+              data = json.load(f)
+          print(''.join(b.get('text','') for b in data.get('content',[]) if b.get('type')=='text'))
+          ")
+
+          cat > .herb-table/CONNECTION_TEST.md <<EOF
+          # HERB Table — Connection Test
+
+          Written automatically by GitHub Actions. Not by hand.
+
+          - **Run at:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          - **Commit:** ${GITHUB_SHA}
+          - **Run number:** ${GITHUB_RUN_NUMBER}
+
+          ## What this proves
+
+          1. GH_PAT can check out the repo.
+          2. Both secrets are present and non-empty.
+          3. ANTHROPIC_API_KEY is valid and billing is active.
+          4. GH_PAT can commit back to the repo.
+
+          **The model replied:**
+
+          > ${REPLY}
+
+          If you are reading this file in GitHub and you did not create it,
+          the write path works. The table can land code.
+          EOF
+
+          git config user.name "HERB Table"
+          git config user.email "actions@github.com"
+          git add .herb-table/CONNECTION_TEST.md
+          git commit -m "HERB table: connection test passed (run ${GITHUB_RUN_NUMBER})"
+          git push
+
+      - name: Done
+        run: |
+          echo "================================================"
+          echo "ALL FOUR CHECKS PASSED."
+          echo "See .herb-table/CONNECTION_TEST.md in the repo."
+          echo "================================================"
