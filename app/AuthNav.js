@@ -56,22 +56,23 @@ export default function AuthNav() {
   if (!ready) return null;
 
   return (
-    <nav style={{
+    <nav className="herb-nav" style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       padding: name ? '16px 32px' : '14px 32px',
       position: 'sticky', top: 0,
       background: 'rgba(251,247,241,.92)', backdropFilter: 'blur(12px)',
       zIndex: 100, borderBottom: '1px solid #E7DFD4',
     }}>
-      <Link href="/" style={{
+      <Link href="/" className="herb-nav-brand" style={{
         fontWeight: 800, letterSpacing: '-.02em', lineHeight: 1,
         fontSize: name ? 24 : 40, color: '#2A2932', textDecoration: 'none',
+        flex: '0 0 auto',
       }}>
         HERB<span style={{ color: '#E7A6B5' }}>.</span>
       </Link>
 
       {name ? (
-        <div style={{ display: 'flex', gap: 24, fontSize: 14, fontWeight: 600, color: '#5B5966', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="herb-nav-links" style={{ fontSize: 14, fontWeight: 600, color: '#5B5966' }}>
           <Link href="/dashboard" style={{ color: '#2A2932', fontWeight: 700, textDecoration: 'none' }}>Hi, {name}</Link>
           <Link href="/" style={{ textDecoration: 'none', color: 'inherit' }}>Browse recipes</Link>
           <Link href="/shopping" style={{ textDecoration: 'none', color: 'inherit' }}>Shopping list</Link>
