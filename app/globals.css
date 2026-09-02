@@ -97,3 +97,271 @@ select:focus {
 @media (max-width: 720px) {
   .herb-grid-2 { grid-template-columns: 1fr 1fr !important; }
 }
+
+/* ===========================================================================
+   SEMANTIC TOKENS — 2 September 2026
+   Design brief §7.1: every semantic colour has a TEXT value and a WASH value,
+   and the light value is never used as text.
+
+   --alert is the single red. Six existed in the codebase (#A00000, #b00020,
+   #C0392B, #C25B4E, #dc2626, #FFAB91). #C0392B is chosen because it is the one
+   already on /shopping, so picking it changes no pixel here — the other five
+   get migrated onto this variable rather than each page picking again.
+   PROPOSED, not ruled: Brand owns the final value, this just stops the drift.
+   --amber-wash is NEW and declared as new (corrections §5: if it is on a
+   screen it is in the table).
+   =========================================================================== */
+:root {
+  /* The sticky AuthNav's own height. Every other sticky thing in the app has
+     to stack under it, and it must not be a magic number in three files. */
+  --nav-h: 57px;
+  --green-text: #5E7A63;
+  --green-wash: #EAF1EB;   /* the value that already exists in the repo */
+  --amber-text: #C99A5B;
+  --amber-wash: #FBF1DF;   /* NEW — #E9C067 is a fill, unreadable under text */
+  --alert: #C0392B;
+  --alert-wash: #F7E9E7;   /* NEW */
+}
+
+/* ===========================================================================
+   THE RESPONSIVE LAYER
+   The app is styled with inline style objects, which cannot hold a media
+   query — that is the structural reason nothing reflows on a phone, and no
+   amount of editing inline styles fixes it. These classes are the escape
+   hatch: layout and breakpoints live here, colour tokens stay inline.
+   =========================================================================== */
+
+/* The nav wraps to two and three lines on a phone, because four links at 14px
+   plus a 40px wordmark do not fit in 360px. One non-wrapping scrollable row
+   instead, and a shorter bar. */
+.herb-nav-links { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+.herb-nav-links > * { white-space: nowrap; flex: 0 0 auto; }
+@media (max-width: 720px) {
+  :root { --nav-h: 52px; }
+  .herb-nav { padding: 10px 16px !important; }
+  .herb-nav-brand { font-size: 20px !important; }
+  .herb-nav-links {
+    gap: 16px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    font-size: 13px;
+    margin-left: 16px;
+  }
+  .herb-nav-links::-webkit-scrollbar { display: none; }
+}
+
+/* Page shell. Phone gets 16px gutters and room for the CaptureBar; desktop
+   gets the 860px measure the pages already assume. */
+.herb-page {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 32px 20px 64px;
+  display: grid;
+  gap: 24px;
+}
+@media (max-width: 720px) {
+  .herb-page { padding: 16px 16px 96px; gap: 16px; }
+}
+
+/* Cards: 28px of side padding is a desktop indulgence on a 360px screen. */
+.herb-card {
+  background: #FFFFFF;
+  border: 1px solid var(--hairline);
+  border-radius: 20px;
+  padding: 24px 28px;
+}
+@media (max-width: 720px) {
+  .herb-card { padding: 16px; border-radius: 16px; }
+}
+/* Full-bleed list card on a phone: the list is the page, not a card on it. */
+@media (max-width: 720px) {
+  .herb-card-bleed {
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    margin-left: -16px;
+    margin-right: -16px;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+
+/* Titles. 36px is a desktop number; the phone is the product (brief §7.2). */
+.herb-h1 {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin: 0;
+  line-height: 1.15;
+}
+@media (max-width: 720px) { .herb-h1 { font-size: 22px; } }
+
+/* Every number in the product is tabular. */
+.herb-num { font-variant-numeric: tabular-nums; }
+
+/* Minimum touch target, applied to every control that takes a tap. */
+.herb-tap { min-height: 48px; }
+
+/* ---------------------------------------------------------------------------
+   /shopping
+   --------------------------------------------------------------------------- */
+
+/* Desktop gets a second column: the list stays a readable single measure and
+   the running total / actions sit beside it instead of scrolling away.
+   Phone gets one column and a sticky bar instead. */
+.shop-layout { display: grid; gap: 24px; align-items: start; }
+/* Grid items default to min-width:auto, so the horizontally-scrolling trip
+   row would widen the whole page instead of scrolling inside itself. */
+.shop-layout > * { min-width: 0; }
+@media (min-width: 900px) {
+  .shop-layout { grid-template-columns: minmax(0, 1fr) 296px; gap: 32px; }
+  .shop-aside { position: sticky; top: 24px; }
+}
+
+/* The running total. Sticky under the nav on a phone, in the aside on desktop. */
+.shop-bar {
+  position: sticky;
+  top: var(--nav-h);
+  z-index: 20;
+  background: var(--cream);
+  border-bottom: 1px solid var(--hairline);
+  padding: 10px 16px;
+  margin: 0 -16px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+@media (min-width: 900px) { .shop-bar { display: none; } }
+
+/* Trip switcher. Three pills reading "Main shop · Fri 28 Aug" do not fit side
+   by side on a phone and wrap into a three-line stack that pushes the first
+   item below the fold. One scrolling row instead. */
+.shop-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin-bottom: 8px;
+  padding-bottom: 2px;
+}
+.shop-tabs::-webkit-scrollbar { display: none; }
+.shop-tabs > * { flex: 0 0 auto; white-space: nowrap; }
+
+.shop-aside-total { display: none; }
+@media (min-width: 900px) { .shop-aside-total { display: block; } }
+
+/* Sticky aisle heading. Sits below the running total on a phone. */
+.shop-aisle {
+  position: sticky;
+  top: calc(var(--nav-h) + 44px);
+  z-index: 10;
+  background: var(--cream);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 10px 0 6px;
+  margin: 0;
+}
+@media (min-width: 900px) { .shop-aisle { top: var(--nav-h); background: #FFFFFF; } }
+
+/* THE ROW. 56px, whole row is the tap target, no nested controls competing
+   for the thumb. A supermarket at 7pm, one hand, bad light. */
+.shop-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 0;
+  border: 0;
+  border-top: 1px solid var(--hairline);
+  background: transparent;
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.shop-row:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+.shop-tickbox {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 100px;
+  border: 1.5px solid var(--hairline);
+  display: grid;
+  place-items: center;
+  transition: background 160ms ease-out, border-color 160ms ease-out;
+}
+.shop-row[aria-pressed="true"] .shop-tickbox {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+.shop-row[aria-pressed="true"] .shop-name {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.shop-name { font-size: 17px; font-weight: 600; line-height: 1.25; }
+.shop-note { font-size: 13px; color: var(--muted); }
+.shop-price {
+  margin-left: auto;
+  font-size: 15px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Primary action: INK on white, radius 14, full width on a phone.
+   Not the pink pill — a pink pill button makes a supermarket list look like a
+   wellness app (brief §7.1). Pink stays the accent and nothing else. */
+.herb-btn {
+  border-radius: 14px;
+  padding: 14px 24px;
+  min-height: 48px;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.herb-btn-primary { background: var(--ink); color: #FFFFFF; }
+.herb-btn-secondary { background: #FFFFFF; color: var(--ink); border-color: var(--hairline); }
+.herb-btn[disabled] { opacity: 0.5; cursor: default; }
+@media (max-width: 720px) {
+  .herb-btn { width: 100%; }
+  .herb-btn-inline { width: auto; }
+}
+
+/* Sheets: a bottom sheet on a phone, a centred card on desktop. Same markup. */
+.herb-sheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(42, 41, 50, 0.32);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+@media (min-width: 720px) { .herb-sheet-scrim { align-items: center; } }
+.herb-sheet {
+  background: #FFFFFF;
+  width: 100%;
+  max-width: 460px;
+  border-radius: 20px 20px 0 0;
+  padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
+  display: grid;
+  gap: 16px;
+  max-height: 88vh;
+  overflow-y: auto;
+}
+@media (min-width: 720px) { .herb-sheet { border-radius: 20px; padding: 24px; } }
+
+@media (prefers-reduced-motion: no-preference) {
+  .herb-sheet { animation: sheet-in 240ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+  @keyframes sheet-in { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+}
