@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { getSupabase } from '../../../lib/supabase';
 import { recipeImageUrl } from '../../../lib/recipeImage';
 import RecipeActions, { MeasureUnitsProvider, Qty } from './RecipeActions';
+import { scaleRecipe, scaleCost, scaleQuantity, REFERENCE_LABEL } from '../../../lib/referenceAdult';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,12 +31,14 @@ export default async function RecipeDetailPage({ params }) {
   const supabase = getSupabase();
 
   // Recipe (real: select *)
-  const { data: recipe, error: recipeError } = await supabase
+  const { data: rawRecipe, error: recipeError } = await supabase
     .from('recipes')
     .select('*')
     .eq('id', id)
     .single();
-  if (recipeError || !recipe) notFound();
+  if (recipeError || !rawRecipe) notFound();
+  // Public figures are sized for an 80 kg reference adult (lib/referenceAdult.js).
+  const recipe = scaleRecipe(rawRecipe);
 
   // Cost (real: separate recipe_costs table, cost_gbp)
   const { data: costRow } = await supabase
@@ -43,7 +46,7 @@ export default async function RecipeDetailPage({ params }) {
     .select('cost_gbp')
     .eq('recipe_id', id)
     .maybeSingle();
-  const cost = costRow?.cost_gbp ?? null;
+  const cost = scaleCost(costRow?.cost_gbp ?? null);
 
   // Allergens (real: recipe_allergens.contains / may_contain)
   let contains = [];
@@ -81,7 +84,7 @@ export default async function RecipeDetailPage({ params }) {
     ingredients = (riRows || []).map((r) => ({
       ingredientId: r.ingredient_id,
       name: ingMap[r.ingredient_id]?.name || 'Unknown ingredient',
-      quantity: r.quantity,
+      quantity: scaleQuantity(r.quantity, ingMap[r.ingredient_id]?.unit),
       unit: ingMap[r.ingredient_id]?.unit || null,
       gramsPerItem: ingMap[r.ingredient_id]?.grams_per_item ?? null,
     }));
@@ -100,14 +103,14 @@ export default async function RecipeDetailPage({ params }) {
     .select('id, name, kcal, image_id, section')
     .neq('id', id)
     .limit(3);
-  const related = relatedRows || [];
+  const related = (relatedRows || []).map(scaleRecipe);
   const relCostMap = {};
   if (related.length) {
     const { data: relCosts } = await supabase
       .from('recipe_costs')
       .select('recipe_id, cost_gbp')
       .in('recipe_id', related.map((r) => r.id));
-    (relCosts || []).forEach((c) => { relCostMap[c.recipe_id] = c.cost_gbp; });
+    (relCosts || []).forEach((c) => { relCostMap[c.recipe_id] = scaleCost(c.cost_gbp); });
   }
 
   // Only show a macro bar when the recipe actually has a value for it, so
@@ -161,7 +164,7 @@ export default async function RecipeDetailPage({ params }) {
               {recipe.name}
             </h1>
             <p style={{ fontSize: 14, color: '#5B5966', marginTop: 10 }}>
-              Per portion{recipe.portions > 1 ? ` · makes ${recipe.portions}` : ''}
+              Per portion · {REFERENCE_LABEL}{recipe.portions > 1 ? ` · makes ${recipe.portions}` : ''}
             </p>
             {recipe.description && (
               <p style={{ fontSize: 15, color: '#5B5966', marginTop: 10, lineHeight: 1.6 }}>{recipe.description}</p>
