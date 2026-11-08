@@ -319,7 +319,13 @@ export default function OnboardingPage() {
       diet: 'keto',
       allergens,
       dislikes,
-      ...targets,
+      // Only the four stored target columns. calculateTargets also returns
+      // target_fibre_g (a constant 30 g) which has no profiles column; spreading the
+      // whole object made the upsert fail (PR #6 regression, fixed 8 Nov).
+      target_kcal: targets.target_kcal,
+      target_protein_g: targets.target_protein_g,
+      target_carbs_g: targets.target_carbs_g,
+      target_fat_g: targets.target_fat_g,
       onboarded_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }, { onConflict: 'id' });
