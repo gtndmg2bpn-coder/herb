@@ -50,8 +50,8 @@ export default function AboutPage() {
             <p className="s-eyebrow">Who&rsquo;s behind it</p>
             <h2 className="s-h2" style={{ marginBottom: 24 }}>Built in Cornwall.</h2>
             <p>
-              Herb was started by Karum, who spent twenty years in food manufacturing, operations and product development
-              before deciding the problem worth solving was his own: losing weight without living on a spreadsheet, and without the food bill getting out of hand.
+              Herb was started by a founder who spent twenty years in food manufacturing, operations and product development
+              before deciding the problem worth solving was a personal one: losing weight without living on a spreadsheet, and without the food bill getting out of hand.
             </p>
             <p>
               The approach comes from the factory floor. Know exactly what goes into every portion, know exactly what it costs, plan production
