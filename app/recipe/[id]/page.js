@@ -27,6 +27,31 @@ function labelAllergens(codes) {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Keep, freeze and batch facts come from the recipe row (Karum's cook rules per
+// dish). Prep and cook times are shown only when a value exists: Chef Herb's times
+// are estimates until the dish has been cooked, and the 55 live recipes carry no
+// times yet (8 Nov 2026). Nothing here is invented to fill a gap.
+function RecipeFacts({ recipe }) {
+  const facts = [];
+  const prep = Number(recipe.prep_time_min);
+  const cook = Number(recipe.cook_time_min);
+  if (prep > 0) facts.push({ k: 'Prep', v: `${prep} min` });
+  if (cook > 0) facts.push({ k: 'Cook', v: `${cook} min` });
+  const keep = Number(recipe.fresh_shelf_days);
+  if (keep > 0) facts.push({ k: 'Keeps', v: keep === 1 ? 'Eat the same day' : `${keep} days in the fridge` });
+  facts.push({ k: 'Freezer', v: recipe.freezes ? 'Freezes well' : 'Best fresh' });
+  const batch = Number(recipe.batch_portions);
+  if (batch > 1) facts.push({ k: 'Batch', v: `Cook ${batch} portions at once` });
+  if (facts.length === 0) return null;
+  return (
+    <dl className="s-facts">
+      {facts.map((f) => (
+        <div key={f.k}><dt>{f.k}</dt><dd>{f.v}</dd></div>
+      ))}
+    </dl>
+  );
+}
+
 export async function generateMetadata({ params }) {
   if (!UUID.test(params.id)) return { title: 'Recipe · HERB' };
   try {
@@ -60,16 +85,26 @@ export default async function RecipeDetailPage({ params }) {
     ingredientsReadable = false;
   }
 
+  // Allergens. The view says whether every ingredient in the dish has had its
+  // allergens checked (allergen_complete). Until it has, an empty list means
+  // "not checked yet", never "allergen-free", and the page must say so. On
+  // 8 Nov 2026 no live recipe was complete, so this wording is what visitors see.
   let contains = [];
   let mayContain = [];
+  let allergenComplete = false;
+  let allergenKnown = false;
   try {
     const { data: allergenRow } = await supabase
       .from('recipe_allergens')
-      .select('contains, may_contain')
+      .select('contains, may_contain, allergen_complete')
       .eq('recipe_id', id)
       .maybeSingle();
-    contains = allergenRow?.contains ?? [];
-    mayContain = (allergenRow?.may_contain ?? []).filter((c) => !contains.includes(c));
+    if (allergenRow) {
+      allergenKnown = true;
+      contains = allergenRow.contains ?? [];
+      mayContain = (allergenRow.may_contain ?? []).filter((c) => !contains.includes(c));
+      allergenComplete = allergenRow.allergen_complete === true;
+    }
   } catch {}
 
   const steps = methodSteps(recipe.method);
@@ -113,6 +148,7 @@ export default async function RecipeDetailPage({ params }) {
               <span className="s-chip" style={{ flex: '0 0 auto' }}>Per portion</span>
               <span>{REFERENCE_LABEL}. <Link href="/signup" className="s-link" style={{ fontWeight: 600 }}>Sign up</Link> and Herb sizes it to you. Cost leaves out salt, pepper, herbs, spices, oil, garlic and stock: those come out of your monthly pantry allowance.</span>
             </div>
+            <RecipeFacts recipe={recipe} />
             <RecipeActions recipeId={id} ingredients={ingredients.filter((i) => i.ingredientId)} />
           </div>
         </header>
@@ -152,16 +188,23 @@ export default async function RecipeDetailPage({ params }) {
               ))}
             </div>
 
-            {(contains.length > 0 || mayContain.length > 0) ? (
-              <div style={{ marginTop: 28, padding: '14px 16px', borderRadius: 14, background: '#fff', border: '1px solid var(--hairline)' }}>
-                {contains.length > 0 ? <p style={{ margin: 0, fontSize: 14 }}><strong>Contains:</strong> {labelAllergens(contains)}</p> : null}
-                {mayContain.length > 0 ? (
-                  <p style={{ margin: contains.length ? '6px 0 0' : 0, fontSize: 13, color: 'var(--muted)' }}>
-                    May contain, depending on the brand: {labelAllergens(mayContain)}. Check the label.
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
+            <div className="s-allergens">
+              <p className="s-allergens-title">Allergens</p>
+              {allergenKnown && allergenComplete ? (
+                <p>
+                  {contains.length > 0 ? <><strong>Contains:</strong> {labelAllergens(contains)}.</> : <>None of the UK&rsquo;s 14 listed allergens in the recipe as written.</>}
+                </p>
+              ) : (
+                <p>
+                  {contains.length > 0 ? <><strong>Contains at least:</strong> {labelAllergens(contains)}. </> : null}
+                  The allergen check for this recipe isn&rsquo;t finished yet, so this list may be incomplete.
+                </p>
+              )}
+              {mayContain.length > 0 ? (
+                <p className="s-allergens-may">May contain, depending on the brand you buy: {labelAllergens(mayContain)}.</p>
+              ) : null}
+              <p className="s-allergens-may">Always check the label on what you buy. Brands and recipes change.</p>
+            </div>
           </div>
 
           <div>
