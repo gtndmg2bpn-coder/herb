@@ -120,6 +120,10 @@ export default function CaptureBar() {
     </button>
   );
 
+  // Visitors who aren't logged in have nothing to capture into. The bar is an
+  // app control, not a marketing one, so it doesn't appear for them at all.
+  if (loading || !loggedIn) return null;
+
   return (
     <>
       {/* In-flow spacer so page content is never trapped behind the fixed bar. */}
