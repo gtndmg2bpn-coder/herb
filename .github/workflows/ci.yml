@@ -1,0 +1,40 @@
+name: CI — tests and build
+
+# Runs on every PR and every push to main.
+# A red run means: do not merge.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    env:
+      # The dates suite also sets this itself; set here so every suite agrees.
+      TZ: Europe/London
+      NEXT_TELEMETRY_DISABLED: 1
+      # Placeholders only — the build needs the names to exist, not real values.
+      # No secret is used by this job.
+      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install (exact, from lockfile)
+        run: npm ci
+
+      - name: Test suites
+        run: npm test
+
+      - name: Build
+        run: npm run build

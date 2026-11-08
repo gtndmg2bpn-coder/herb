@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test": "for f in lib/*.test.js test/*.test.js; do node \"$f\" || exit 1; done"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.45.4",
