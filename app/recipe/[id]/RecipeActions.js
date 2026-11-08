@@ -16,6 +16,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { getBrowserClient } from '../../../lib/supabaseBrowser';
 import { swapMeal } from '../../../lib/actions';
+import { countLabel } from '../../../lib/countItems';
 
 const MEALS = ['breakfast', 'lunch', 'dinner'];
 
@@ -148,8 +149,11 @@ function formatImperial(quantity, unit) {
 // Wraps one server-rendered quantity. SSR + first client render are always
 // metric (identical to today's output — no hydration mismatch); it re-renders
 // in imperial only after the preference loads.
-export function Qty({ quantity, unit }) {
+export function Qty({ quantity, unit, gramsPerItem = null, name = '' }) {
   const { units } = useContext(MeasureUnitsContext);
+  // Counted items (eggs, sausages) read as "2 eggs" in either unit system.
+  const counted = countLabel(quantity, gramsPerItem, name);
+  if (counted) return <>{counted}</>;
   return <>{units === 'imperial' ? formatImperial(quantity, unit) : formatMetric(quantity, unit)}</>;
 }
 

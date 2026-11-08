@@ -46,6 +46,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getBrowserClient } from '../../lib/supabaseBrowser';
 import { isoDate, addDays, daysBetween, dayLabel } from '../../lib/dates';
+import { itemCount, countLabel } from '../../lib/countItems';
 import {
   generateShoppingList,
   logShoppingTrip,
@@ -98,6 +99,13 @@ function poundsToPence(value) {
 // "2 × 500g packs" when we know the pack size, plain quantity otherwise.
 function packLabel(item) {
   const packSize = Number(item.pack_size);
+  // Counted items (eggs, sausages): "1 × pack of 6", never "1 × 348g pack".
+  const perItem = item.ingredients?.grams_per_item;
+  const perPack = itemCount(packSize, perItem);
+  if (perPack != null) {
+    const packs = Math.max(1, Math.round(Number(item.quantity) / packSize));
+    return `${packs} × pack of ${perPack}`;
+  }
   if (packSize > 0) {
     const packs = Math.max(1, Math.round(Number(item.quantity) / packSize));
     return `${packs} × ${packSize}${item.unit || ''} pack${packs > 1 ? 's' : ''}`;
@@ -110,6 +118,9 @@ function needLabel(item) {
   if (item.needed_qty == null) return null;
   const needed = Number(item.needed_qty);
   if (!(needed > 0) || needed >= Number(item.quantity)) return null;
+  // "need 2 sausages", not "need 151.34g". Rounds UP: no half egg.
+  const counted = countLabel(needed, item.ingredients?.grams_per_item, item.label, 'up');
+  if (counted) return `need ${counted}`;
   return `need ${needed}${item.unit || ''}`;
 }
 
@@ -210,7 +221,7 @@ export default function ShoppingPage() {
       // in shopping order on the client.
       const { data: itemRows, error: itemErr } = await supabase
         .from('shopping_list_items')
-        .select('*, ingredients ( aisle, name )')
+        .select('*, ingredients ( aisle, name, grams_per_item )')
         .in('trip_id', planned.map((trip) => trip.id))
         .order('label', { ascending: true });
       if (itemErr) throw itemErr;
