@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { getBrowserClient } from '../lib/supabaseBrowser';
 import { recipeImageUrl } from '../lib/recipeImage';
+import { scaleRecipe, scaleCost, REFERENCE_LABEL } from '../lib/referenceAdult';
 
 const WASHES = {
   Breakfast: 'linear-gradient(155deg,#F1E7D5,#F7F0E2)',
@@ -93,8 +94,9 @@ export default function HomePage() {
         .from('recipe_costs')
         .select('recipe_id, cost_gbp');
       if (!alive) return;
-      setRecipes(recipeRows || []);
-      setCostByRecipe(Object.fromEntries((costRows || []).map((row) => [row.recipe_id, row.cost_gbp])));
+      // Public figures are sized for an 80 kg reference adult (lib/referenceAdult.js).
+      setRecipes((recipeRows || []).map(scaleRecipe));
+      setCostByRecipe(Object.fromEntries((costRows || []).map((row) => [row.recipe_id, scaleCost(row.cost_gbp)])));
     }
     load();
     return () => {
@@ -107,28 +109,14 @@ export default function HomePage() {
     [recipes]
   );
 
-  // Idle (All + no search) shows one pick per category as a preview.
-  // Searching or choosing a category shows every matching recipe.
+  // Karum, 8 Nov: "All" means all. Search and category chips narrow it.
   const visibleRecipes = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const filtering = q !== '' || category !== 'All';
-    if (filtering) {
-      return recipes.filter(
-        (recipe) =>
-          (category === 'All' || recipe.section === category) &&
-          (q === '' || (recipe.name || '').toLowerCase().includes(q))
-      );
-    }
-    const seen = new Set();
-    const picks = [];
-    for (const recipe of recipes) {
-      const key = recipe.section || recipe.id;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      picks.push(recipe);
-      if (picks.length >= 6) break;
-    }
-    return picks;
+    return recipes.filter(
+      (recipe) =>
+        (category === 'All' || recipe.section === category) &&
+        (q === '' || (recipe.name || '').toLowerCase().includes(q))
+    );
   }, [recipes, category, query]);
 
   // Dish of the week: the salmon recipe if it's in the book (its photography
@@ -212,7 +200,7 @@ export default function HomePage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 20, flexWrap: 'wrap' }}>
             <div>
               <h2 style={{ fontWeight: 800, fontSize: 'clamp(28px,4.5vw,44px)', letterSpacing: '-.03em', margin: 0 }}>Recipes</h2>
-              <p style={{ fontSize: 14, color: '#5B5966', marginTop: 8 }}>Per-portion macros and cost, rolled up live from the database. One pick per category — pick a category to see more.</p>
+              <p style={{ fontSize: 14, color: '#5B5966', marginTop: 8 }}>Per-portion macros and cost, rolled up live from the database. {REFERENCE_LABEL} — sign up and Herb sizes every portion to you.</p>
             </div>
           </div>
         </div>
