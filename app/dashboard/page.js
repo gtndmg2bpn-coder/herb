@@ -1637,7 +1637,7 @@ export default function DashboardPage() {
       </section>
 
       <div style={{ display: 'flex', gap: 20, alignItems: 'center', fontSize: 14, fontWeight: 600 }}>
-        <Link href="/" style={{ textDecoration: 'underline' }}>Browse recipes</Link>
+        <Link href="/recipes" style={{ textDecoration: 'underline' }}>Browse recipes</Link>
         <Link href="/shopping" style={{ textDecoration: 'underline' }}>Shopping list</Link>
       </div>
 

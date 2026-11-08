@@ -668,7 +668,7 @@ export default function ShoppingPage() {
 
         <div style={{ display: 'flex', gap: 24, alignItems: 'center', justifyContent: 'center' }}>
           <Link href="/dashboard" style={{ color: MUTED, textDecoration: 'none', fontWeight: 500, fontSize: 14 }}>Dashboard</Link>
-          <Link href="/" style={{ color: MUTED, textDecoration: 'none', fontWeight: 500, fontSize: 14 }}>Browse recipes</Link>
+          <Link href="/recipes" style={{ color: MUTED, textDecoration: 'none', fontWeight: 500, fontSize: 14 }}>Browse recipes</Link>
         </div>
       </div>
 

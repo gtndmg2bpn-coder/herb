@@ -365,3 +365,255 @@ select:focus {
   .herb-sheet { animation: sheet-in 240ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
   @keyframes sheet-in { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
 }
+
+/* ===========================================================================
+   PUBLIC SITE — 8 November 2026 rebuild
+   Mobile first: every rule below is the phone; min-width queries add desktop.
+   Brand: cream ground, ink type, white cards, hairlines. Ink is the primary
+   action. Pink means "you" (your weight, your plan). Blue means "Herb worked
+   this out". Serif only in the hero and on dish names.
+   =========================================================================== */
+
+.s-wrap { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 20px; }
+@media (min-width: 900px) { .s-wrap { padding: 0 40px; } }
+
+.s-section { padding: 56px 0; }
+@media (min-width: 900px) { .s-section { padding: 96px 0; } }
+.s-section-tight { padding: 40px 0; }
+.s-rule { border-top: 1px solid var(--hairline); }
+
+.s-eyebrow {
+  font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--muted); margin: 0 0 14px;
+}
+.s-h1 {
+  font-weight: 800; letter-spacing: -.035em; line-height: 1.02; margin: 0;
+  font-size: clamp(40px, 10vw, 76px);
+}
+.s-h2 {
+  font-weight: 800; letter-spacing: -.03em; line-height: 1.08; margin: 0;
+  font-size: clamp(28px, 6vw, 46px);
+}
+.s-h3 { font-weight: 700; letter-spacing: -.02em; line-height: 1.2; margin: 0; font-size: 19px; }
+.s-serif { font-family: var(--font-newsreader), Georgia, serif; font-style: italic; font-weight: 500; }
+.s-lede { font-size: 17px; line-height: 1.55; color: var(--muted); margin: 18px 0 0; max-width: 46ch; }
+@media (min-width: 900px) { .s-lede { font-size: 19px; } }
+.s-body { font-size: 15px; line-height: 1.6; color: var(--muted); margin: 10px 0 0; }
+.s-small { font-size: 13px; color: var(--muted); }
+.s-num { font-variant-numeric: tabular-nums; }
+
+/* Buttons: ink primary, white secondary, radius 14, full width on a phone. */
+.s-btns { display: flex; flex-direction: column; gap: 10px; margin-top: 28px; }
+@media (min-width: 600px) { .s-btns { flex-direction: row; flex-wrap: wrap; } }
+.s-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 52px; padding: 0 26px; border-radius: 14px;
+  font-size: 16px; font-weight: 700; text-decoration: none; cursor: pointer;
+  border: 1px solid transparent; font-family: inherit; transition: transform .15s ease, background .15s ease;
+}
+.s-btn:hover { transform: translateY(-1px); }
+.s-btn-primary { background: var(--ink); color: #fff; }
+.s-btn-primary:hover { color: #fff; background: #000; }
+.s-btn-secondary { background: #fff; color: var(--ink); border-color: var(--hairline); }
+.s-btn-secondary:hover { color: var(--ink); border-color: var(--ink); }
+.s-link { font-weight: 700; text-decoration: none; color: var(--ink); border-bottom: 1.5px solid var(--ink); padding-bottom: 1px; }
+.s-link:hover { color: var(--ink); border-color: var(--pink); }
+
+/* ---- Nav ---------------------------------------------------------------- */
+.s-nav { position: sticky; top: 0; z-index: 100; background: rgba(251,247,241,.94); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--hairline); }
+.s-nav-bar { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+@media (min-width: 900px) { .s-nav-bar { height: 72px; } }
+.s-brand { font-weight: 800; font-size: 24px; letter-spacing: -.02em; color: var(--ink); text-decoration: none; }
+.s-brand:hover { color: var(--ink); }
+.s-brand span { color: var(--pink); }
+.s-nav-links { display: none; }
+.s-nav-links a { color: var(--muted); text-decoration: none; font-weight: 600; font-size: 15px; }
+.s-nav-links a:hover, .s-nav-links a[aria-current="page"] { color: var(--ink); }
+.s-nav-actions { display: none; align-items: center; gap: 18px; }
+.s-nav-actions .s-btn { min-height: 44px; padding: 0 20px; font-size: 15px; }
+.s-nav-login { font-weight: 600; font-size: 15px; color: var(--ink); text-decoration: none; }
+.s-menu-btn {
+  width: 44px; height: 44px; border: 1px solid var(--hairline); border-radius: 12px; background: #fff;
+  display: grid; place-items: center; cursor: pointer; padding: 0;
+}
+.s-menu-btn svg { display: block; }
+.s-menu-panel { border-top: 1px solid var(--hairline); padding: 8px 0 20px; }
+.s-menu-panel a.s-menu-item {
+  display: flex; align-items: center; min-height: 52px; font-size: 18px; font-weight: 700;
+  color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--hairline);
+}
+.s-menu-panel .s-btns { margin-top: 18px; }
+@media (min-width: 900px) {
+  .s-nav-links { display: flex; gap: 32px; }
+  .s-nav-actions { display: flex; }
+  .s-menu-btn, .s-menu-panel { display: none; }
+}
+
+/* ---- Hero --------------------------------------------------------------- */
+.s-hero { padding: 36px 0 48px; }
+.s-hero-grid { display: grid; gap: 40px; align-items: center; }
+@media (min-width: 900px) { .s-hero { padding: 72px 0 96px; } .s-hero-grid { grid-template-columns: 1.05fr .95fr; gap: 56px; } }
+.s-hero h1 em { color: var(--pink); }
+.s-proof { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 28px; font-size: 14px; color: var(--muted); }
+.s-proof b { color: var(--ink); }
+
+.s-hero-visual { position: relative; display: flex; justify-content: center; }
+.s-hero-photo {
+  position: absolute; inset: 8% 0 8% 18%; border-radius: 28px;
+  background-size: cover; background-position: center; display: none;
+}
+@media (min-width: 900px) { .s-hero-photo { display: block; } }
+
+/* ---- Phone mockup ------------------------------------------------------- */
+.s-phone {
+  position: relative; width: min(330px, 100%); background: #fff; border-radius: 40px;
+  border: 10px solid var(--ink); box-shadow: 0 30px 60px -30px rgba(42,41,50,.45);
+  overflow: hidden;
+}
+.s-phone-inner { padding: 18px 16px 20px; }
+.s-phone-top { display: flex; justify-content: space-between; align-items: baseline; }
+.s-phone-title { font-size: 18px; font-weight: 800; letter-spacing: -.02em; }
+.s-chip { display: inline-block; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 100px; background: var(--pink-b); color: var(--ink); }
+.s-chip-blue { background: var(--blue-b); }
+.s-chip-green { background: var(--green-wash); color: var(--green-text); }
+.s-phone-day { margin-top: 14px; }
+.s-phone-dayname { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
+.s-phone-meal { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--hairline); }
+.s-phone-thumb { width: 40px; height: 40px; border-radius: 10px; background-size: cover; background-position: center; flex: 0 0 auto; background-color: var(--sand-a); }
+.s-phone-mealname { font-size: 13px; font-weight: 600; line-height: 1.25; }
+.s-phone-meta { font-size: 11.5px; color: var(--muted); }
+.s-phone-out { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--blue-b); font-size: 12px; line-height: 1.4; }
+.s-phone-foot { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--hairline); display: flex; justify-content: space-between; font-size: 12px; }
+.s-phone-foot b { display: block; font-size: 15px; }
+
+/* ---- Steps -------------------------------------------------------------- */
+.s-steps { display: grid; gap: 14px; margin-top: 36px; counter-reset: step; }
+@media (min-width: 700px) { .s-steps { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 1080px) { .s-steps { grid-template-columns: repeat(4, 1fr); } }
+.s-step { background: #fff; border: 1px solid var(--hairline); border-radius: 20px; padding: 24px; }
+.s-step-n { width: 34px; height: 34px; border-radius: 50%; background: var(--ink); color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 14px; margin-bottom: 18px; }
+
+/* ---- £/lbs ------------------------------------------------------------- */
+.s-split { display: grid; gap: 14px; margin-top: 36px; }
+@media (min-width: 800px) { .s-split { grid-template-columns: 1fr 1fr; } }
+.s-panel { border-radius: 24px; padding: 28px; }
+@media (min-width: 900px) { .s-panel { padding: 40px; } }
+.s-panel-ink { background: var(--ink); color: var(--cream); }
+.s-panel-ink .s-body, .s-panel-ink li { color: rgba(251,247,241,.78); }
+.s-panel-white { background: #fff; border: 1px solid var(--hairline); }
+.s-big { font-weight: 800; letter-spacing: -.04em; font-size: clamp(48px, 10vw, 72px); line-height: 1; }
+.s-list { list-style: none; padding: 0; margin: 20px 0 0; display: grid; gap: 12px; }
+.s-list li { font-size: 15px; line-height: 1.5; padding-left: 26px; position: relative; color: var(--muted); }
+.s-list li::before { content: ''; position: absolute; left: 0; top: 7px; width: 10px; height: 10px; border-radius: 50%; background: var(--pink); }
+.s-panel-ink .s-list li::before { background: var(--blue); }
+
+/* ---- Recipe cards ------------------------------------------------------- */
+.s-head-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.s-cards { display: grid; gap: 16px; margin-top: 32px; grid-template-columns: 1fr; }
+@media (min-width: 560px) { .s-cards { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 980px) { .s-cards { grid-template-columns: repeat(3, 1fr); gap: 20px; } }
+.s-card {
+  background: #fff; border: 1px solid var(--hairline); border-radius: 20px; overflow: hidden;
+  display: flex; flex-direction: column; text-decoration: none; color: var(--ink);
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.s-card:hover { color: var(--ink); transform: translateY(-2px); box-shadow: 0 18px 40px -24px rgba(42,41,50,.35); }
+.s-card-img { aspect-ratio: 4 / 3; background-size: cover; background-position: center; background-color: var(--sand-a); position: relative; }
+.s-card-tag { position: absolute; left: 12px; top: 12px; background: rgba(255,255,255,.92); border-radius: 100px; font-size: 11px; font-weight: 700; padding: 5px 10px; letter-spacing: .02em; }
+.s-card-body { padding: 16px 18px 18px; display: flex; flex-direction: column; flex: 1; }
+.s-card-name { font-size: 19px; line-height: 1.2; margin: 0; }
+.s-card-stats { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: auto; padding-top: 14px; }
+.s-card-stat b { display: block; font-size: 17px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.s-card-stat span { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.s-card-statrow { border-top: 1px solid var(--hairline); margin-top: 14px; }
+
+/* ---- Recipe book controls ---------------------------------------------- */
+.s-tools { display: grid; gap: 12px; margin-top: 24px; }
+@media (min-width: 800px) { .s-tools { grid-template-columns: 1fr auto auto; align-items: center; } }
+.s-input, .s-select {
+  min-height: 48px; border: 1px solid var(--hairline); border-radius: 12px; background: #fff;
+  padding: 0 14px; font-size: 16px; color: var(--ink); width: 100%;
+}
+.s-check { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; min-height: 48px; white-space: nowrap; cursor: pointer; }
+.s-check input { width: 20px; height: 20px; accent-color: var(--ink); }
+.s-chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 16px -20px 0; padding: 0 20px 4px; }
+.s-chips::-webkit-scrollbar { display: none; }
+@media (min-width: 900px) { .s-chips { flex-wrap: wrap; margin: 16px 0 0; padding: 0; overflow: visible; } }
+.s-chip-btn {
+  flex: 0 0 auto; min-height: 40px; padding: 0 16px; border-radius: 100px; border: 1px solid var(--hairline);
+  background: #fff; color: var(--ink); font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.s-chip-btn[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+.s-chip-btn small { opacity: .6; font-weight: 600; margin-left: 4px; }
+.s-empty { background: #fff; border: 1px solid var(--hairline); border-radius: 20px; padding: 40px 24px; text-align: center; color: var(--muted); margin-top: 24px; }
+
+/* ---- Feature strip / Hack Away ----------------------------------------- */
+.s-feature { display: grid; gap: 28px; align-items: center; border-radius: 28px; overflow: hidden; background: #fff; border: 1px solid var(--hairline); }
+@media (min-width: 900px) { .s-feature { grid-template-columns: 1fr 1fr; gap: 0; } }
+.s-feature-img { min-height: 260px; height: 100%; background-size: cover; background-position: center; }
+.s-feature-text { padding: 28px; }
+@media (min-width: 900px) { .s-feature-text { padding: 56px; } }
+.s-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.s-tag { font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 100px; border: 1px solid var(--hairline); background: var(--cream); }
+
+/* ---- FAQ ---------------------------------------------------------------- */
+.s-faq { margin-top: 28px; border-top: 1px solid var(--hairline); }
+.s-faq details { border-bottom: 1px solid var(--hairline); }
+.s-faq summary {
+  list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 16px;
+  min-height: 64px; font-size: 17px; font-weight: 700; padding: 12px 0;
+}
+.s-faq summary::-webkit-details-marker { display: none; }
+.s-faq summary::after { content: '+'; font-size: 24px; font-weight: 400; color: var(--muted); flex: 0 0 auto; }
+.s-faq details[open] summary::after { content: '−'; }
+.s-faq details p { margin: 0 0 20px; font-size: 15px; line-height: 1.6; color: var(--muted); max-width: 70ch; }
+
+/* ---- CTA band + footer -------------------------------------------------- */
+.s-cta { background: var(--ink); color: var(--cream); border-radius: 28px; padding: 40px 28px; text-align: center; }
+@media (min-width: 900px) { .s-cta { padding: 72px 56px; } }
+.s-cta .s-h2 { color: var(--cream); }
+.s-cta .s-body { color: rgba(251,247,241,.75); margin-left: auto; margin-right: auto; max-width: 52ch; }
+.s-cta .s-btns { justify-content: center; }
+.s-cta .s-btn-primary { background: var(--cream); color: var(--ink); }
+.s-cta .s-btn-primary:hover { background: #fff; color: var(--ink); }
+
+.s-footer { border-top: 1px solid var(--hairline); margin-top: 56px; padding: 40px 0 48px; }
+.s-footer-grid { display: grid; gap: 28px; grid-template-columns: 1fr 1fr; }
+@media (min-width: 800px) { .s-footer-grid { grid-template-columns: 2fr 1fr 1fr 1fr; } }
+.s-footer h4 { font-size: 13px; font-weight: 700; margin: 0 0 12px; }
+.s-footer a { display: block; font-size: 14px; color: var(--muted); text-decoration: none; padding: 5px 0; }
+.s-footer a:hover { color: var(--ink); }
+.s-footer-note { margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--hairline); font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
+
+/* ---- Recipe page -------------------------------------------------------- */
+.s-recipe-head { display: grid; gap: 24px; padding: 20px 0 8px; }
+@media (min-width: 900px) { .s-recipe-head { grid-template-columns: 1.1fr 1fr; gap: 48px; align-items: start; padding-top: 28px; } }
+.s-recipe-img { aspect-ratio: 4 / 3; border-radius: 22px; background-size: cover; background-position: center; background-color: var(--sand-a); margin: 0 -20px; border-radius: 0; }
+@media (min-width: 600px) { .s-recipe-img { margin: 0; border-radius: 22px; } }
+.s-recipe-title { font-size: clamp(32px, 7vw, 48px); line-height: 1.05; letter-spacing: -.02em; margin: 0; }
+.s-stats4 { display: grid; grid-template-columns: repeat(4, 1fr); background: #fff; border: 1px solid var(--hairline); border-radius: 16px; margin-top: 22px; }
+.s-stats4 > div { text-align: center; padding: 14px 4px; border-right: 1px solid var(--hairline); }
+.s-stats4 > div:last-child { border-right: 0; }
+.s-stats4 b { display: block; font-size: 20px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.s-stats4 span { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.s-sized { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; font-size: 13.5px; color: var(--muted); line-height: 1.5; }
+.s-recipe-body { display: grid; gap: 40px; padding: 40px 0 8px; }
+@media (min-width: 900px) { .s-recipe-body { grid-template-columns: 1fr 1.4fr; gap: 56px; padding-top: 64px; } }
+.s-ing-row { display: flex; justify-content: space-between; gap: 16px; padding: 13px 0; border-bottom: 1px solid var(--hairline); font-size: 15px; }
+.s-ing-row span:last-child { color: var(--muted); font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.s-ing-fixed { font-size: 12px; color: var(--muted); margin-top: 10px; }
+.s-method { display: grid; gap: 18px; counter-reset: m; }
+.s-method-step { display: grid; grid-template-columns: 32px 1fr; gap: 14px; font-size: 16px; line-height: 1.6; }
+.s-method-step::before { counter-increment: m; content: counter(m); width: 32px; height: 32px; border-radius: 50%; background: var(--ink); color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 13px; }
+.s-method-tip { padding: 12px 16px; border-radius: 12px; background: var(--sand-b); font-size: 15px; line-height: 1.6; }
+.s-macros { display: grid; gap: 12px; max-width: 520px; margin-top: 8px; }
+.s-bar { height: 8px; border-radius: 100px; background: var(--hairline); overflow: hidden; margin-top: 6px; }
+.s-bar > div { height: 100%; border-radius: 100px; }
+.s-crumbs { display: flex; gap: 8px; align-items: center; font-size: 14px; padding-top: 18px; color: var(--muted); }
+.s-crumbs a { color: var(--muted); text-decoration: none; font-weight: 600; }
+.s-crumbs a:hover { color: var(--ink); }
+
+/* ---- Prose pages -------------------------------------------------------- */
+.s-prose { max-width: 680px; }
+.s-prose p { font-size: 17px; line-height: 1.7; color: var(--ink-2); margin: 0 0 18px; }
+.s-prose h2 { font-size: 24px; font-weight: 800; letter-spacing: -.02em; margin: 40px 0 12px; }
