@@ -617,3 +617,5 @@ select:focus {
 .s-prose { max-width: 680px; }
 .s-prose p { font-size: 17px; line-height: 1.7; color: var(--ink-2); margin: 0 0 18px; }
 .s-prose h2 { font-size: 24px; font-weight: 800; letter-spacing: -.02em; margin: 40px 0 12px; }
+.s-panel-ink .s-list li { color: rgba(251,247,241,.82); }
+.s-footer .s-brand { font-size: 22px; display: inline-block; }

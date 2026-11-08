@@ -5,8 +5,10 @@ import { useMemo, useState } from 'react';
 import RecipeCard from '../../components/site/RecipeCard';
 import { SECTION_ORDER, sectionLabel, proteinPer100Kcal } from '../../lib/recipeDisplay';
 
+// Shakes and snacks are top-ups, not meals: in the default view they follow the meals.
+const TOP_UPS = new Set(['shakes', 'snacks']);
 const SORTS = {
-  protein: { label: 'Most protein per calorie', fn: (a, b) => proteinPer100Kcal(b) - proteinPer100Kcal(a) },
+  protein: { label: 'Most protein per calorie', fn: (a, b) => (TOP_UPS.has(a.section) - TOP_UPS.has(b.section)) || proteinPer100Kcal(b) - proteinPer100Kcal(a) },
   kcal: { label: 'Fewest calories', fn: (a, b) => (a.kcal ?? 1e9) - (b.kcal ?? 1e9) },
   cost: { label: 'Cheapest', fn: (a, b) => (a.cost_gbp ?? 1e9) - (b.cost_gbp ?? 1e9) },
   name: { label: 'A to Z', fn: (a, b) => a.name.localeCompare(b.name) },
