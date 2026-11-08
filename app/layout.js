@@ -3,21 +3,27 @@
 // accent), design tokens via globals.css, and the Editorial nav on every page.
 
 import './globals.css';
-import { Hanken_Grotesk, Newsreader } from 'next/font/google';
+import localFont from 'next/font/local';
 import AuthNav from './AuthNav';
 import CaptureBar from '../components/CaptureBar';
 
-const hanken = Hanken_Grotesk({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700', '800'],
+// Fonts are self-hosted (SIL Open Font License, files in app/fonts) so a build
+// never depends on Google Fonts being reachable. CI failed intermittently on that
+// fetch before 8 Nov 2026. Variable fonts: one file covers every weight.
+const hanken = localFont({
+  src: [
+    { path: './fonts/hanken-grotesk-latin-wght-normal.woff2', style: 'normal' },
+    { path: './fonts/hanken-grotesk-latin-wght-italic.woff2', style: 'italic' },
+  ],
   variable: '--font-hanken',
   display: 'swap',
 });
 
-const newsreader = Newsreader({
-  subsets: ['latin'],
-  style: ['normal', 'italic'],
-  weight: ['400', '500'],
+const newsreader = localFont({
+  src: [
+    { path: './fonts/newsreader-latin-wght-normal.woff2', style: 'normal' },
+    { path: './fonts/newsreader-latin-wght-italic.woff2', style: 'italic' },
+  ],
   variable: '--font-newsreader',
   display: 'swap',
 });

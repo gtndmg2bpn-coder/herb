@@ -377,9 +377,12 @@ select:focus {
 .s-wrap { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 20px; }
 @media (min-width: 900px) { .s-wrap { padding: 0 40px; } }
 
-.s-section { padding: 56px 0; }
-@media (min-width: 900px) { .s-section { padding: 96px 0; } }
-.s-section-tight { padding: 40px 0; }
+/* Vertical rhythm only. These never touch left/right padding, so a block can be
+   both .s-wrap and .s-section without losing its gutter (the FAQ and 404 pages
+   had no side gutter on phones for exactly that reason, 8 Nov 2026). */
+.s-section { padding-top: 56px; padding-bottom: 56px; }
+@media (min-width: 900px) { .s-section { padding-top: 96px; padding-bottom: 96px; } }
+.s-section-tight { padding-top: 40px; padding-bottom: 40px; }
 .s-rule { border-top: 1px solid var(--hairline); }
 
 .s-eyebrow {
@@ -596,6 +599,30 @@ select:focus {
 .s-stats4 > div:last-child { border-right: 0; }
 .s-stats4 b { display: block; font-size: 20px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 .s-stats4 span { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.s-facts { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 18px 0 0; padding: 0; }
+.s-facts > div { display: flex; gap: 6px; align-items: baseline; font-size: 14px; }
+.s-facts dt { margin: 0; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.s-facts dd { margin: 0; font-weight: 600; color: var(--ink); }
+.s-allergens { margin-top: 28px; padding: 14px 16px; border-radius: 14px; background: #fff; border: 1px solid var(--hairline); }
+.s-allergens p { margin: 0; font-size: 14px; line-height: 1.5; }
+.s-allergens p + p { margin-top: 6px; }
+.s-allergens-title { font-size: 11px !important; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px !important; }
+.s-allergens-may { font-size: 13px !important; color: var(--muted); }
+
+/* ---- About ------------------------------------------------------------- */
+.s-stat-strip { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--hairline); border: 1px solid var(--hairline); border-radius: 20px; overflow: hidden; }
+@media (min-width: 900px) { .s-stat-strip { grid-template-columns: repeat(4, 1fr); } }
+.s-stat-strip > div { background: #fff; padding: 22px 18px; }
+.s-stat-strip b { display: block; font-size: 36px; font-weight: 800; letter-spacing: -.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+.s-stat-strip span { display: block; margin-top: 8px; font-size: 13px; color: var(--muted); line-height: 1.4; }
+.s-about-grid { display: grid; gap: 20px; }
+@media (min-width: 900px) { .s-about-grid { grid-template-columns: 1fr 1.3fr; gap: 64px; align-items: start; } }
+.s-pull { font-family: var(--font-newsreader), Georgia, serif; font-style: italic; font-weight: 500; font-size: clamp(24px, 3.4vw, 34px); line-height: 1.25; color: var(--ink); margin-top: 28px !important; padding-left: 18px; border-left: 3px solid var(--pink); }
+.s-refusals { display: grid; gap: 28px 40px; margin-top: 36px; }
+@media (min-width: 700px) { .s-refusals { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 1080px) { .s-refusals { grid-template-columns: repeat(3, 1fr); } }
+.s-refusals > div { padding-top: 18px; border-top: 2px solid var(--ink); }
+.s-refusals .s-h3 { margin-bottom: 8px; }
 .s-sized { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; font-size: 13.5px; color: var(--muted); line-height: 1.5; }
 .s-recipe-body { display: grid; gap: 40px; padding: 40px 0 8px; }
 @media (min-width: 900px) { .s-recipe-body { grid-template-columns: 1fr 1.4fr; gap: 56px; padding-top: 64px; } }
