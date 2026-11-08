@@ -73,7 +73,7 @@ export default async function RecipeDetailPage({ params }) {
     if (ids.length) {
       const { data: ingRows, error: ingErr } = await supabase
         .from('ingredients')
-        .select('id, name, unit')
+        .select('id, name, unit, grams_per_item')
         .in('id', ids);
       if (ingErr) throw ingErr;
       (ingRows || []).forEach((i) => { ingMap[i.id] = i; });
@@ -83,6 +83,7 @@ export default async function RecipeDetailPage({ params }) {
       name: ingMap[r.ingredient_id]?.name || 'Unknown ingredient',
       quantity: r.quantity,
       unit: ingMap[r.ingredient_id]?.unit || null,
+      gramsPerItem: ingMap[r.ingredient_id]?.grams_per_item ?? null,
     }));
   } catch {
     ingredientsReadable = false;
@@ -160,7 +161,7 @@ export default async function RecipeDetailPage({ params }) {
               {recipe.name}
             </h1>
             <p style={{ fontSize: 14, color: '#5B5966', marginTop: 10 }}>
-              Per portion{recipe.portions ? ` · makes ${recipe.portions}` : ''}
+              Per portion{recipe.portions > 1 ? ` · makes ${recipe.portions}` : ''}
             </p>
             {recipe.description && (
               <p style={{ fontSize: 15, color: '#5B5966', marginTop: 10, lineHeight: 1.6 }}>{recipe.description}</p>
@@ -196,7 +197,7 @@ export default async function RecipeDetailPage({ params }) {
           <div>
             <h2 style={h2}>
               Ingredients{' '}
-              {recipe.portions ? <span style={{ fontSize: 14, fontWeight: 600, color: '#5B5966' }}>· makes {recipe.portions}</span> : null}
+              {recipe.portions > 1 ? <span style={{ fontSize: 14, fontWeight: 600, color: '#5B5966' }}>· makes {recipe.portions}</span> : null}
             </h2>
             {ingredientsReadable ? (
               ingredients.length > 0 ? (
@@ -204,7 +205,7 @@ export default async function RecipeDetailPage({ params }) {
                   {ingredients.map((ing, i) => (
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #E7DFD4', fontSize: 14 }}>
                       <span>{ing.name}</span>
-                      <span style={{ color: '#5B5966', fontWeight: 600 }}><Qty quantity={ing.quantity} unit={ing.unit} /></span>
+                      <span style={{ color: '#5B5966', fontWeight: 600 }}><Qty quantity={ing.quantity} unit={ing.unit} gramsPerItem={ing.gramsPerItem} name={ing.name} /></span>
                     </div>
                   ))}
                 </div>
