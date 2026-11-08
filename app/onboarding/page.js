@@ -1,636 +1,379 @@
 'use client';
 // app/onboarding/page.js
+//
+// Five questions, then a plan (Karum, 8 Nov 2026): goal, you, size, goal weight,
+// activity. Everything else lives under "Tailor your plan" (/tailor) and is asked
+// only when the person wants it. One optional safety check on allergies sits at
+// the end; it is skippable and is not a question about the plan.
+//
+// Writes: logWeight RPC first (the starting weigh-in), then the profiles upsert
+// with onboarded_at set last, so a failed weigh-in leaves the wizard re-runnable.
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { getBrowserClient } from '../../lib/supabaseBrowser';
 import { calculateTargets } from '../../lib/targets';
 import { logWeight } from '../../lib/actions';
+import { MODES, STEP_OPTIONS, modeByKey } from '../../lib/modes';
 
-const SEX_OPTIONS = ['male', 'female', 'other'];
-const ACTIVITY_OPTIONS = ['sedentary', 'light', 'moderate', 'active', 'very_active'];
-
-// KIMI NOTE: pace tokens are the profiles.pace contract. Labels are microcopy-only; the
-// stored value remains the small machine token.
-const PACE_OPTIONS = [
-  { value: 'steady', label: 'Steady — about 0.5% body weight per week' },
-  { value: 'moderate', label: 'Moderate — about 0.75% body weight per week' },
-  { value: 'faster', label: 'Faster — about 1% body weight per week, capped near 2 lb/week' },
+const SEX_OPTIONS = [
+  { value: 'female', label: 'Female' },
+  { value: 'male', label: 'Male' },
+  { value: 'other', label: 'Other' },
 ];
 
-// KIMI NOTE: conversion happens only at the input layer. Storage, validation, and target
-// maths remain metric; constants are named so the imperial path is auditable.
 const CM_PER_FOOT = 30.48;
 const CM_PER_INCH = 2.54;
 const LBS_PER_STONE = 14;
 const KG_PER_LB = 0.45359237;
 
-// KIMI NOTE: diet is a rule-set, not a goal. Keto is live; the other visible options are
-// disabled roadmap placeholders and are never written.
-const DIET_OPTIONS = [
-  { value: 'keto', label: 'Keto', enabled: true, tag: '' },
-  { value: 'mediterranean', label: 'Mediterranean', enabled: false, tag: 'coming soon' },
-  { value: 'low_carb', label: 'Low-carb', enabled: false, tag: 'coming soon' },
-  { value: 'vegetarian_keto', label: 'Vegetarian keto', enabled: false, tag: 'coming soon' },
-];
-
-// KIMI NOTE: allergens are the 14 UK declarables and are hard exclusions. Tokens are stored
-// verbatim; only two display labels need friendlier wording.
+// The 14 UK declarable allergens. Hard exclusions everywhere in the plan.
 const ALLERGEN_OPTIONS = [
   'celery', 'gluten', 'crustaceans', 'eggs', 'fish', 'lupin', 'milk',
   'molluscs', 'mustard', 'tree nuts', 'peanuts', 'sesame', 'soya', 'sulphites',
 ];
-
-// KIMI NOTE: dislikes are soft exclusions. This curated list covers common HERB blockers;
-// the free-type box below merges into the same profiles.dislikes array.
-const DISLIKE_OPTIONS = [
-  'mushrooms', 'olives', 'coriander', 'blue cheese', 'goat’s cheese', 'anchovies',
-  'sardines', 'mackerel', 'liver', 'kidney', 'black pudding', 'brussels sprouts',
-  'cabbage', 'kale', 'beetroot', 'aubergine', 'courgette', 'fennel', 'gherkins', 'capers',
-  'horseradish', 'onions', 'garlic', 'very spicy / chilli', 'tomatoes', 'peppers',
-  'avocado', 'tofu', 'marmite / yeast extract', 'prawns',
-];
-
-function numberOrZero(value) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function roundToOne(value) {
-  return Math.round(value * 10) / 10;
-}
-
-function titleCaseToken(token) {
-  return token
-    .split(' ')
-    .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : part))
-    .join(' ');
-}
-
 function allergenLabel(token) {
-  if (token === 'gluten') return 'Cereals containing gluten';
-  if (token === 'sulphites') return 'Sulphur dioxide / sulphites';
-  return titleCaseToken(token);
+  if (token === 'tree nuts') return 'Tree nuts';
+  if (token === 'sulphites') return 'Sulphites (SO₂)';
+  return token.charAt(0).toUpperCase() + token.slice(1);
 }
+
+const QUESTIONS = ['Your goal', 'About you', 'Your size', 'Goal weight', 'Your activity'];
+const LAST = QUESTIONS.length; // index of the optional allergy check
+
+function num(v) { const n = Number(v); return Number.isFinite(n) ? n : 0; }
+function round1(v) { return Math.round(v * 10) / 10; }
 
 export default function OnboardingPage() {
   const router = useRouter();
-
   const [checking, setChecking] = useState(true);
   const [session, setSession] = useState(null);
+  const [availableModes, setAvailableModes] = useState(['keto']);
 
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const [displayName, setDisplayName] = useState('');
-  // KIMI NOTE: profiles.sex is free text in the database; these three tokens are the
-  // app-level contract consumed by onboarding and the target calculation.
-  const [sex, setSex] = useState('male');
+  const [mode, setMode] = useState('keto');
+  const [sex, setSex] = useState('');
   const [dob, setDob] = useState('');
-  const [heightCm, setHeightCm] = useState('');
-  const [startWeightKg, setStartWeightKg] = useState('');
-  const [goalWeightKg, setGoalWeightKg] = useState('');
-  const [activityLevel, setActivityLevel] = useState('sedentary');
-  const [avgDailyBurnKcal, setAvgDailyBurnKcal] = useState('');
-  // KIMI NOTE: pace defaults to steady and is only meaningful/persisted for a loss goal.
-  const [pace, setPace] = useState('steady');
-
-  // KIMI NOTE: allergens and curated dislikes are independent tick-lists; dislikesText is
-  // now only the "anything else" free-type box that merges into the final dislikes array.
-  const [allergens, setAllergens] = useState([]);
-  const [dislikeChoices, setDislikeChoices] = useState([]);
-  const [dislikesText, setDislikesText] = useState('');
-
-  // KIMI NOTE: units default to metric. Imperial inputs are kept as their raw ft/in and
-  // st/lb strings so the user can type naturally; parsed below is the only canonical form.
   const [units, setUnits] = useState('metric');
+  const [heightCm, setHeightCm] = useState('');
+  const [weightKg, setWeightKg] = useState('');
+  const [goalKg, setGoalKg] = useState('');
   const [heightFeet, setHeightFeet] = useState('');
   const [heightInches, setHeightInches] = useState('');
-  const [startStone, setStartStone] = useState('');
-  const [startPounds, setStartPounds] = useState('');
+  const [weightStone, setWeightStone] = useState('');
+  const [weightLb, setWeightLb] = useState('');
   const [goalStone, setGoalStone] = useState('');
-  const [goalPounds, setGoalPounds] = useState('');
+  const [goalLb, setGoalLb] = useState('');
+  const [steps, setSteps] = useState(null);
+  const [gym, setGym] = useState(null);
+  const [allergens, setAllergens] = useState([]);
 
   useEffect(() => {
     let alive = true;
-
-    // KIMI NOTE: client-side guard duplicated with dashboard rather than extracted into an
-    // extra helper file, keeping the new-file list exact and avoiding protected UI flash.
-    getBrowserClient().auth.getSession().then(({ data: { session: found } }) => {
+    const supabase = getBrowserClient();
+    supabase.auth.getSession().then(async ({ data: { session: found } }) => {
       if (!alive) return;
-      if (!found) {
-        router.replace('/login');
-        return;
-      }
+      if (!found) { router.replace('/login'); return; }
       setSession(found);
-      setChecking(false);
+      // A mode can only be chosen if its row exists in `diets` (the engine reads
+      // its rules from there). Keto always exists. Others appear as they land.
+      try {
+        const { data } = await supabase.from('diets').select('key');
+        const keys = (data || []).map((d) => d.key).filter((k) => MODES.some((m) => m.key === k));
+        if (alive && keys.length) setAvailableModes(Array.from(new Set(['keto', ...keys])));
+      } catch {}
+      if (alive) setChecking(false);
     });
-
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [router]);
 
   const parsed = useMemo(() => {
     if (units === 'imperial') {
-      const heightCmImperial = numberOrZero(heightFeet) * CM_PER_FOOT + numberOrZero(heightInches) * CM_PER_INCH;
-      const startWeightKgImperial = (numberOrZero(startStone) * LBS_PER_STONE + numberOrZero(startPounds)) * KG_PER_LB;
-      const goalWeightKgImperial = (numberOrZero(goalStone) * LBS_PER_STONE + numberOrZero(goalPounds)) * KG_PER_LB;
-
-      // KIMI NOTE: converted metric values are rounded before use — height to the nearest
-      // whole cm, weight to 1 dp — matching the precision of the metric inputs they replace.
       return {
-        heightCm: Math.round(heightCmImperial),
-        startWeightKg: roundToOne(startWeightKgImperial),
-        goalWeightKg: roundToOne(goalWeightKgImperial),
+        heightCm: Math.round(num(heightFeet) * CM_PER_FOOT + num(heightInches) * CM_PER_INCH),
+        weightKg: round1((num(weightStone) * LBS_PER_STONE + num(weightLb)) * KG_PER_LB),
+        goalKg: round1((num(goalStone) * LBS_PER_STONE + num(goalLb)) * KG_PER_LB),
       };
     }
+    return { heightCm: Number(heightCm), weightKg: Number(weightKg), goalKg: Number(goalKg) };
+  }, [units, heightCm, weightKg, goalKg, heightFeet, heightInches, weightStone, weightLb, goalStone, goalLb]);
 
-    return {
-      heightCm: Number(heightCm),
-      startWeightKg: Number(startWeightKg),
-      goalWeightKg: Number(goalWeightKg),
-    };
-  }, [
-    units,
-    heightCm,
-    startWeightKg,
-    goalWeightKg,
-    heightFeet,
-    heightInches,
-    startStone,
-    startPounds,
-    goalStone,
-    goalPounds,
-  ]);
-
-  // KIMI NOTE: goal is derived from start vs goal weight rather than asked separately:
-  // start > goal => 'lose weight', start < goal => 'gain weight', equal => 'maintain'.
   const goal = useMemo(() => {
-    if (!parsed.startWeightKg || !parsed.goalWeightKg) return 'maintain';
-    if (parsed.startWeightKg > parsed.goalWeightKg) return 'lose weight';
-    if (parsed.startWeightKg < parsed.goalWeightKg) return 'gain weight';
+    if (!parsed.weightKg || !parsed.goalKg) return 'maintain';
+    if (parsed.weightKg > parsed.goalKg) return 'lose weight';
+    if (parsed.weightKg < parsed.goalKg) return 'gain weight';
     return 'maintain';
-  }, [parsed.startWeightKg, parsed.goalWeightKg]);
+  }, [parsed.weightKg, parsed.goalKg]);
 
-  // KIMI NOTE: blank burn stays null; a supplied burn is stored as an integer kcal value.
-  const avgDailyBurn = avgDailyBurnKcal.trim() === '' ? null : Math.round(Number(avgDailyBurnKcal));
+  const validators = [
+    () => (availableModes.includes(mode) ? '' : 'Choose a goal.'),
+    () => {
+      if (!sex) return 'Choose one, so Herb can work out what you burn.';
+      if (!dob) return 'Herb needs your date of birth to work out what you burn.';
+      const d = new Date(dob);
+      if (d > new Date()) return 'That date is in the future.';
+      const age = (Date.now() - d.getTime()) / (365.25 * 86400000);
+      if (age < 18) return 'Herb is for adults. It never sets a plan for anyone under 18.';
+      if (age > 110) return 'Check the date of birth.';
+      return '';
+    },
+    () => {
+      if (units === 'imperial' && !(num(heightInches) >= 0 && num(heightInches) < 12)) return 'Inches run 0 to 11.';
+      if (units === 'imperial' && !(num(weightLb) >= 0 && num(weightLb) < 14)) return 'Pounds run 0 to 13.';
+      if (!(parsed.heightCm >= 100 && parsed.heightCm <= 250)) return 'Height needs to be between 100 and 250 cm.';
+      if (!(parsed.weightKg >= 30 && parsed.weightKg <= 300)) return 'Weight needs to be between 30 and 300 kg.';
+      return '';
+    },
+    () => {
+      if (units === 'imperial' && !(num(goalLb) >= 0 && num(goalLb) < 14)) return 'Pounds run 0 to 13.';
+      if (!(parsed.goalKg >= 30 && parsed.goalKg <= 300)) return 'Goal weight needs to be between 30 and 300 kg.';
+      if (mode === 'muscle' && parsed.goalKg < parsed.weightKg) return 'Muscle gain means a small surplus. Set a goal weight at or above where you are now, or pick Calorie deficit.';
+      return '';
+    },
+    () => (steps == null || gym == null ? 'Pick a steps band and how often you train.' : ''),
+  ];
 
-  // KIMI NOTE: final dislikes = curated ticks + free-type entries split on commas, trimmed,
-  // blanks dropped, then deduped with Set. Case is preserved exactly as typed rather than
-  // normalised, because these are user-facing avoidance labels.
-  const freeTypedDislikes = dislikesText
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-  const dislikes = Array.from(new Set([...dislikeChoices, ...freeTypedDislikes]));
+  const allValid = validators.every((v) => v() === '');
+  const preview = allValid
+    ? calculateTargets({
+        sex, date_of_birth: dob, height_cm: parsed.heightCm,
+        weight_kg: parsed.weightKg, start_weight_kg: parsed.weightKg, goal_weight_kg: parsed.goalKg,
+        activity_level: 'sedentary', pace: 'steady',
+        mode, avg_daily_steps: steps, gym_sessions_per_week: gym,
+      })
+    : null;
 
   if (checking || !session) return null;
 
-  function toggleAllergen(token) {
-    setAllergens((current) => (
-      current.includes(token) ? current.filter((item) => item !== token) : [...current, token]
-    ));
-  }
-
-  function toggleDislike(token) {
-    setDislikeChoices((current) => (
-      current.includes(token) ? current.filter((item) => item !== token) : [...current, token]
-    ));
-  }
-
-  function validateIdentity() {
-    if (!displayName.trim()) return 'Display name is required.';
-    // KIMI NOTE: date_of_birth is required here because Part 6 target calculation needs age.
-    if (!dob) return 'Date of birth is required.';
-    if (new Date(dob) > new Date()) return 'Date of birth cannot be in the future.';
-    if (!SEX_OPTIONS.includes(sex)) return 'Choose a sex option.';
-    if (!ACTIVITY_OPTIONS.includes(activityLevel)) return 'Choose an activity level.';
-    if (avgDailyBurnKcal.trim() !== '' && !(Number(avgDailyBurnKcal) > 0)) return 'Average daily burn must be a positive number of kcal, or left blank.';
-    return '';
-  }
-
-  function validateBody() {
-    if (units === 'imperial') {
-      const imperialValues = [heightFeet, heightInches, startStone, startPounds, goalStone, goalPounds].map(numberOrZero);
-      if (imperialValues.some((value) => value < 0)) return 'Imperial measurements cannot be negative.';
-      if (!(numberOrZero(heightInches) >= 0 && numberOrZero(heightInches) < 12)) return 'Inches must be between 0 and 11.';
-      if (!(numberOrZero(startPounds) >= 0 && numberOrZero(startPounds) < LBS_PER_STONE)) return 'Starting pounds must be between 0 and 13.';
-      if (!(numberOrZero(goalPounds) >= 0 && numberOrZero(goalPounds) < LBS_PER_STONE)) return 'Goal pounds must be between 0 and 13.';
-    }
-
-    if (!(parsed.heightCm >= 100 && parsed.heightCm <= 250)) return 'Height must be between 100 and 250 cm.';
-    if (!(parsed.startWeightKg >= 30 && parsed.startWeightKg <= 300)) return 'Starting weight must be between 30 and 300 kg.';
-    if (!(parsed.goalWeightKg >= 30 && parsed.goalWeightKg <= 300)) return 'Goal weight must be between 30 and 300 kg.';
-    if (goal === 'lose weight' && !PACE_OPTIONS.some((option) => option.value === pace)) return 'Choose a weight-loss pace.';
-    return '';
-  }
-
-  function nextStep() {
+  function next() {
     setError('');
-    const message = step === 0 ? validateIdentity() : step === 1 ? validateBody() : '';
-    if (message) {
-      setError(message);
-      return;
-    }
-    setStep((current) => Math.min(2, current + 1));
+    const msg = step < LAST ? validators[step]() : '';
+    if (msg) { setError(msg); return; }
+    setStep((s) => Math.min(LAST, s + 1));
   }
-
-  function previousStep() {
-    setError('');
-    setStep((current) => Math.max(0, current - 1));
-  }
+  function back() { setError(''); setStep((s) => Math.max(0, s - 1)); }
+  function toggleAllergen(t) { setAllergens((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t])); }
 
   async function finish() {
     setError('');
-
-    const identityError = validateIdentity();
-    const bodyError = validateBody();
-    if (identityError || bodyError) {
-      setError(identityError || bodyError);
-      return;
-    }
-
+    const firstBad = validators.map((v) => v()).find(Boolean);
+    if (firstBad) { setError(firstBad); return; }
     setBusy(true);
-
     const supabase = getBrowserClient();
-    const { data: { session: liveSession } } = await supabase.auth.getSession();
-
-    if (!liveSession) {
-      setBusy(false);
-      router.replace('/login');
-      return;
-    }
-
-    const uid = liveSession.user.id;
+    const { data: { session: live } } = await supabase.auth.getSession();
+    if (!live) { setBusy(false); router.replace('/login'); return; }
 
     const targets = calculateTargets({
-      sex,
-      date_of_birth: dob,
-      height_cm: parsed.heightCm,
-      weight_kg: parsed.startWeightKg,
-      start_weight_kg: parsed.startWeightKg,
-      goal_weight_kg: parsed.goalWeightKg,
-      activity_level: activityLevel,
-      pace,
-      avg_daily_burn_kcal: avgDailyBurn,
+      sex, date_of_birth: dob, height_cm: parsed.heightCm,
+      weight_kg: parsed.weightKg, start_weight_kg: parsed.weightKg, goal_weight_kg: parsed.goalKg,
+      activity_level: 'sedentary', pace: 'steady',
+      mode, avg_daily_steps: steps, gym_sessions_per_week: gym,
     });
 
-    // KIMI NOTE: write order is load-bearing. The starting weigh-in is inserted FIRST;
-    // onboarded_at is set LAST, inside the profiles upsert, only after that dependent row
-    // exists. Client-side supabase-js cannot wrap both writes in one transaction, so if
-    // the weigh-in fails the gate stays closed and the wizard is safely re-runnable.
-    // Routed through the log_weight RPC — the sole write path to the weight ledger.
-    // The RPC derives user_id from auth.uid() internally and preserves the note, so
-    // the 'Starting weight (onboarding)' provenance is kept. Order is still load-bearing:
-    // the weigh-in lands FIRST and gates the profiles upsert below.
-    const { error: weightError } = await logWeight({
-      weightKg: parsed.startWeightKg,
-      note: 'Starting weight (onboarding)',
-    });
+    const { error: weightError } = await logWeight({ weightKg: parsed.weightKg, note: 'Starting weight (onboarding)' });
+    if (weightError) { setBusy(false); setError(weightError.message); return; }
 
-    if (weightError) {
-      setBusy(false);
-      setError(weightError.message);
-      return;
-    }
-
-    // KIMI NOTE: profiles is an UPSERT keyed on id because this database may or may not
-    // have an auth trigger that pre-creates the row. This works in both cases and never
-    // writes another user's row because id is the session user's auth.users.id.
+    const now = new Date().toISOString();
     const { error: profileError } = await supabase.from('profiles').upsert({
-      id: uid,
-      email: liveSession.user.email,
-      display_name: displayName.trim(),
+      id: live.user.id,
+      email: live.user.email,
+      display_name: (live.user.email || '').split('@')[0] || 'You',
       sex,
       date_of_birth: dob,
       height_cm: parsed.heightCm,
-      weight_kg: parsed.startWeightKg,
-      start_weight_kg: parsed.startWeightKg,
-      goal_weight_kg: parsed.goalWeightKg,
+      weight_kg: parsed.weightKg,
+      start_weight_kg: parsed.weightKg,
+      goal_weight_kg: parsed.goalKg,
       goal,
-      activity_level: activityLevel,
-      avg_daily_burn_kcal: avgDailyBurn,
+      // Legacy field. The steps/gym answer replaces the multiplier in the
+      // calculation; this stays populated so older code paths have a value.
+      activity_level: 'sedentary',
+      avg_daily_steps: steps,
+      gym_sessions_per_week: gym,
+      pace: goal === 'lose weight' ? 'steady' : null,
+      diet: mode,
       preferred_units: units,
-      // KIMI NOTE: pace is persisted only for a loss goal; gain/maintain writes null so a
-      // previous loss pace cannot go stale after the user changes direction.
-      pace: goal === 'lose weight' ? pace : null,
-      diet: 'keto',
       allergens,
-      dislikes,
-      // Only the four stored target columns. calculateTargets also returns
-      // target_fibre_g (a constant 30 g) which has no profiles column; spreading the
-      // whole object made the upsert fail (PR #6 regression, fixed 8 Nov).
       target_kcal: targets.target_kcal,
       target_protein_g: targets.target_protein_g,
       target_carbs_g: targets.target_carbs_g,
       target_fat_g: targets.target_fat_g,
-      onboarded_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      onboarded_at: now,
+      updated_at: now,
     }, { onConflict: 'id' });
-
     setBusy(false);
-
-    if (profileError) {
-      setError(profileError.message);
-      return;
-    }
-
+    if (profileError) { setError(profileError.message); return; }
     router.push('/dashboard');
   }
 
-  const previewTargets = validateIdentity() || validateBody()
-    ? null
-    : calculateTargets({
-        sex,
-        date_of_birth: dob,
-        height_cm: parsed.heightCm,
-        weight_kg: parsed.startWeightKg,
-        start_weight_kg: parsed.startWeightKg,
-        goal_weight_kg: parsed.goalWeightKg,
-        activity_level: activityLevel,
-        pace,
-        avg_daily_burn_kcal: avgDailyBurn,
-      });
+  const chosen = modeByKey(mode);
 
   return (
-    <main style={{ maxWidth: 560, margin: '48px auto', padding: '0 16px' }}>
-      <h1>Set up HERB</h1>
-      <p style={{ color: '#666' }}>Step {step + 1} of 3</p>
+    <main className="ob">
+      <div className="ob-top">
+        <span className="s-eyebrow" style={{ margin: 0 }}>{step < LAST ? `Question ${step + 1} of ${LAST}` : 'One safety check'}</span>
+        <div className="ob-dots" aria-hidden="true">
+          {QUESTIONS.map((q, i) => <span key={q} className={i <= step ? 'on' : ''} />)}
+        </div>
+      </div>
 
       {step === 0 ? (
-        <section style={{ display: 'grid', gap: 12 }}>
-          <label style={{ display: 'grid', gap: 6 }}>
-            What should HERB call you?
-            <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />
-          </label>
-
-          <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'grid', gap: 6 }}>
-            <legend>Sex</legend>
-            {SEX_OPTIONS.map((option) => (
-              <label key={option} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <input
-                  type="radio"
-                  name="sex"
-                  value={option}
-                  checked={sex === option}
-                  onChange={() => setSex(option)}
-                />
-                {option}
-              </label>
-            ))}
-          </fieldset>
-
-          <label style={{ display: 'grid', gap: 6 }}>
-            Date of birth
-            <input type="date" value={dob} onChange={(event) => setDob(event.target.value)} required />
-          </label>
-
-          <label style={{ display: 'grid', gap: 6 }}>
-            Activity level
-            <select value={activityLevel} onChange={(event) => setActivityLevel(event.target.value)}>
-              {ACTIVITY_OPTIONS.map((option) => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
-          </label>
-
-          <label style={{ display: 'grid', gap: 6 }}>
-            Average daily calorie burn (kcal) — optional, if you know it
-            <input
-              type="number"
-              min="1"
-              step="1"
-              value={avgDailyBurnKcal}
-              onChange={(event) => setAvgDailyBurnKcal(event.target.value)}
-              placeholder="Leave blank to use activity level"
-            />
-          </label>
-
-          {/* KIMI NOTE: tracker affordance is visual roadmap only — one disabled element,
-              no handler, no state, no DB column, placed beside activity level where a future
-              tracker would refine effort. */}
-          <div
-            aria-disabled="true"
-            style={{
-              border: '1px dashed #bbb',
-              borderRadius: 8,
-              color: '#777',
-              padding: '10px 12px',
-              background: '#f7f7f7',
-            }}
-          >
-            Connect a fitness tracker — coming soon
+        <section>
+          <h1 className="ob-h">What are you here to do?</h1>
+          <p className="ob-sub">Pick one. You can change it later.</p>
+          <div className="ob-cards" role="radiogroup" aria-label="Goal">
+            {MODES.map((m) => {
+              const on = availableModes.includes(m.key);
+              return (
+                <button
+                  type="button" key={m.key} role="radio" aria-checked={mode === m.key}
+                  className={`ob-card ${mode === m.key ? 'sel' : ''}`} disabled={!on}
+                  onClick={() => on && setMode(m.key)}
+                >
+                  <b>{m.label}{!on ? <span className="ob-soon">Coming soon</span> : null}</b>
+                  <span>{m.short}</span>
+                </button>
+              );
+            })}
           </div>
+          <p className="ob-note">{chosen.body}</p>
         </section>
       ) : null}
 
       {step === 1 ? (
-        <section style={{ display: 'grid', gap: 12 }}>
-          <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'flex', gap: 16 }}>
-            <legend style={{ padding: 0, marginBottom: 6 }}>Units</legend>
-            <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input type="radio" name="units" value="metric" checked={units === 'metric'} onChange={() => setUnits('metric')} />
-              Metric (cm / kg)
-            </label>
-            <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input type="radio" name="units" value="imperial" checked={units === 'imperial'} onChange={() => setUnits('imperial')} />
-              Imperial (ft/in / st/lb)
-            </label>
-          </fieldset>
-
-          {units === 'metric' ? (
-            <>
-              <label style={{ display: 'grid', gap: 6 }}>
-                Height (cm)
-                <input type="number" min="100" max="250" value={heightCm} onChange={(event) => setHeightCm(event.target.value)} required />
-              </label>
-
-              <label style={{ display: 'grid', gap: 6 }}>
-                Starting weight (kg)
-                <input type="number" min="30" max="300" step="0.1" value={startWeightKg} onChange={(event) => setStartWeightKg(event.target.value)} required />
-              </label>
-
-              <label style={{ display: 'grid', gap: 6 }}>
-                Goal weight (kg)
-                <input type="number" min="30" max="300" step="0.1" value={goalWeightKg} onChange={(event) => setGoalWeightKg(event.target.value)} required />
-              </label>
-            </>
-          ) : (
-            <>
-              {/* KIMI NOTE: imperial layout keeps each dual input on one labelled row; the
-                  visible inputs stay imperial while parsed.* remains the metric source of truth. */}
-              <div style={{ display: 'grid', gap: 6 }}>
-                <span>Height</span>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <label style={{ display: 'grid', gap: 6, flex: 1 }}>
-                    Feet
-                    <input type="number" min="0" step="1" value={heightFeet} onChange={(event) => setHeightFeet(event.target.value)} required />
-                  </label>
-                  <label style={{ display: 'grid', gap: 6, flex: 1 }}>
-                    Inches
-                    <input type="number" min="0" max="11" step="1" value={heightInches} onChange={(event) => setHeightInches(event.target.value)} required />
-                  </label>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gap: 6 }}>
-                <span>Starting weight</span>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <label style={{ display: 'grid', gap: 6, flex: 1 }}>
-                    Stone
-                    <input type="number" min="0" step="1" value={startStone} onChange={(event) => setStartStone(event.target.value)} required />
-                  </label>
-                  <label style={{ display: 'grid', gap: 6, flex: 1 }}>
-                    Pounds
-                    <input type="number" min="0" max="13" step="0.1" value={startPounds} onChange={(event) => setStartPounds(event.target.value)} required />
-                  </label>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gap: 6 }}>
-                <span>Goal weight</span>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <label style={{ display: 'grid', gap: 6, flex: 1 }}>
-                    Stone
-                    <input type="number" min="0" step="1" value={goalStone} onChange={(event) => setGoalStone(event.target.value)} required />
-                  </label>
-                  <label style={{ display: 'grid', gap: 6, flex: 1 }}>
-                    Pounds
-                    <input type="number" min="0" max="13" step="0.1" value={goalPounds} onChange={(event) => setGoalPounds(event.target.value)} required />
-                  </label>
-                </div>
-              </div>
-            </>
-          )}
-
-          {goal === 'lose weight' ? (
-            <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'grid', gap: 6 }}>
-              {/* KIMI NOTE: pace sits in Step 1 immediately after goal weight because it only
-                  changes the loss deficit; radios match the existing sex control's choice style. */}
-              <legend>Weight-loss pace</legend>
-              {PACE_OPTIONS.map((option) => (
-                <label key={option.value} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input
-                    type="radio"
-                    name="pace"
-                    value={option.value}
-                    checked={pace === option.value}
-                    onChange={() => setPace(option.value)}
-                  />
-                  {option.label}
-                </label>
-              ))}
-            </fieldset>
-          ) : null}
-
-          <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'grid', gap: 6 }}>
-            {/* KIMI NOTE: keto remains the only enabled diet and the stored value; other
-                diets are visible but disabled roadmap rows, deliberately separate from goal. */}
-            <legend>Diet</legend>
-            {DIET_OPTIONS.map((option) => (
-              <label
-                key={option.value}
-                style={{
-                  display: 'flex',
-                  gap: 8,
-                  alignItems: 'center',
-                  color: option.enabled ? 'inherit' : '#777',
-                }}
-              >
-                <input
-                  type="radio"
-                  name="diet"
-                  value={option.value}
-                  checked={option.value === 'keto'}
-                  disabled={!option.enabled}
-                  readOnly
-                />
-                {option.label}
-                {option.tag ? <span style={{ fontSize: 12 }}>({option.tag})</span> : null}
-              </label>
+        <section>
+          <h1 className="ob-h">A bit about you.</h1>
+          <p className="ob-sub">Herb uses these to work out what your body burns at rest.</p>
+          <div className="ob-pills" role="radiogroup" aria-label="Sex">
+            {SEX_OPTIONS.map((o) => (
+              <button type="button" key={o.value} role="radio" aria-checked={sex === o.value} className={`ob-pill ${sex === o.value ? 'sel' : ''}`} onClick={() => setSex(o.value)}>{o.label}</button>
             ))}
-          </fieldset>
-
-          <p style={{ margin: 0, color: '#666' }}>Derived goal: {goal}</p>
+          </div>
+          <label className="ob-field">
+            <span>Date of birth</span>
+            <input type="date" value={dob} onChange={(e) => setDob(e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+          </label>
         </section>
       ) : null}
 
       {step === 2 ? (
-        <section style={{ display: 'grid', gap: 12 }}>
-          {/* KIMI NOTE: helper line states the product rule plainly — allergens are hard
-              exclusions everywhere; dislikes are avoided where possible but never treated as
-              a safety constraint. */}
-          <p style={{ margin: 0, color: '#666' }}>
-            Allergens are excluded from every suggestion; dislikes are avoided where possible.
+        <section>
+          <h1 className="ob-h">Your height and weight.</h1>
+          <div className="ob-pills" role="radiogroup" aria-label="Units">
+            <button type="button" role="radio" aria-checked={units === 'metric'} className={`ob-pill ${units === 'metric' ? 'sel' : ''}`} onClick={() => setUnits('metric')}>cm &amp; kg</button>
+            <button type="button" role="radio" aria-checked={units === 'imperial'} className={`ob-pill ${units === 'imperial' ? 'sel' : ''}`} onClick={() => setUnits('imperial')}>ft &amp; stone</button>
+          </div>
+          {units === 'metric' ? (
+            <>
+              <label className="ob-field"><span>Height (cm)</span><input type="number" inputMode="decimal" min="100" max="250" value={heightCm} onChange={(e) => setHeightCm(e.target.value)} /></label>
+              <label className="ob-field"><span>Weight today (kg)</span><input type="number" inputMode="decimal" min="30" max="300" step="0.1" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} /></label>
+            </>
+          ) : (
+            <>
+              <div className="ob-field"><span>Height</span>
+                <div className="ob-pair">
+                  <input type="number" inputMode="numeric" min="3" max="8" placeholder="ft" value={heightFeet} onChange={(e) => setHeightFeet(e.target.value)} aria-label="Feet" />
+                  <input type="number" inputMode="numeric" min="0" max="11" placeholder="in" value={heightInches} onChange={(e) => setHeightInches(e.target.value)} aria-label="Inches" />
+                </div>
+              </div>
+              <div className="ob-field"><span>Weight today</span>
+                <div className="ob-pair">
+                  <input type="number" inputMode="numeric" min="4" max="47" placeholder="st" value={weightStone} onChange={(e) => setWeightStone(e.target.value)} aria-label="Stone" />
+                  <input type="number" inputMode="decimal" min="0" max="13.9" step="0.5" placeholder="lb" value={weightLb} onChange={(e) => setWeightLb(e.target.value)} aria-label="Pounds" />
+                </div>
+              </div>
+            </>
+          )}
+        </section>
+      ) : null}
+
+      {step === 3 ? (
+        <section>
+          <h1 className="ob-h">{mode === 'muscle' ? 'Where do you want to get to?' : 'What weight are you aiming for?'}</h1>
+          <p className="ob-sub">
+            {mode === 'muscle'
+              ? 'Herb plans a small surplus, about 1% of body weight a month. Set a goal at or above today’s weight.'
+              : 'Herb sets your calories a steady step below what you burn, and holds protein high so you keep muscle as you lose.'}
           </p>
-
-          <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'grid', gap: 8 }}>
-            <legend>Allergens</legend>
-            {/* KIMI NOTE: two-column checkbox grid keeps Step 2 compact while allowing the
-                page to scroll naturally on small screens. */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-              {ALLERGEN_OPTIONS.map((token) => (
-                <label key={token} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={allergens.includes(token)}
-                    onChange={() => toggleAllergen(token)}
-                  />
-                  {allergenLabel(token)}
-                </label>
-              ))}
+          {units === 'metric' ? (
+            <label className="ob-field"><span>Goal weight (kg)</span><input type="number" inputMode="decimal" min="30" max="300" step="0.1" value={goalKg} onChange={(e) => setGoalKg(e.target.value)} /></label>
+          ) : (
+            <div className="ob-field"><span>Goal weight</span>
+              <div className="ob-pair">
+                <input type="number" inputMode="numeric" min="4" max="47" placeholder="st" value={goalStone} onChange={(e) => setGoalStone(e.target.value)} aria-label="Stone" />
+                <input type="number" inputMode="decimal" min="0" max="13.9" step="0.5" placeholder="lb" value={goalLb} onChange={(e) => setGoalLb(e.target.value)} aria-label="Pounds" />
+              </div>
             </div>
-          </fieldset>
-
-          <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'grid', gap: 8 }}>
-            <legend>Dislikes</legend>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-              {DISLIKE_OPTIONS.map((token) => (
-                <label key={token} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={dislikeChoices.includes(token)}
-                    onChange={() => toggleDislike(token)}
-                  />
-                  {token}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-
-          <label style={{ display: 'grid', gap: 6 }}>
-            Anything else you'd rather avoid (comma-separated)
-            <input
-              value={dislikesText}
-              onChange={(event) => setDislikesText(event.target.value)}
-              placeholder="e.g. raw onion, sweetcorn"
-            />
-          </label>
-
-          {previewTargets ? (
-            <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12 }}>
-              <strong>Daily targets</strong>
-              <p style={{ margin: '8px 0 0' }}>
-                {previewTargets.target_kcal} kcal · protein {previewTargets.target_protein_g} g · carbs{' '}
-                {previewTargets.target_carbs_g} g · fat {previewTargets.target_fat_g} g
-              </p>
-            </div>
+          )}
+          {parsed.weightKg && parsed.goalKg ? (
+            <p className="ob-note">
+              {goal === 'lose weight' ? `${round1(parsed.weightKg - parsed.goalKg)} kg to lose. Steady pace, roughly half a kilo a week.` : goal === 'gain weight' ? `${round1(parsed.goalKg - parsed.weightKg)} kg to gain.` : 'Holding steady. Herb plans at maintenance.'}
+            </p>
           ) : null}
         </section>
       ) : null}
 
-      {error ? <p role="alert" style={{ color: '#b00020' }}>{error}</p> : null}
+      {step === 4 ? (
+        <section>
+          <h1 className="ob-h">How much do you move?</h1>
+          <p className="ob-sub">Herb counts your steps and training as calories burned, on top of what your body uses at rest.</p>
+          <p className="ob-label">Steps on a normal day</p>
+          <div className="ob-cards" role="radiogroup" aria-label="Steps a day">
+            {STEP_OPTIONS.map((o) => (
+              <button type="button" key={o.value} role="radio" aria-checked={steps === o.value} className={`ob-card ${steps === o.value ? 'sel' : ''}`} onClick={() => setSteps(o.value)}>
+                <b>{o.label}</b><span>{o.hint}</span>
+              </button>
+            ))}
+          </div>
+          <p className="ob-label">Gym or strength sessions a week</p>
+          <div className="ob-pills" role="radiogroup" aria-label="Gym sessions a week">
+            {[0, 1, 2, 3, 4, 5, 6].map((n) => (
+              <button type="button" key={n} role="radio" aria-checked={gym === n} className={`ob-pill ${gym === n ? 'sel' : ''}`} onClick={() => setGym(n)}>{n === 6 ? '6+' : n}</button>
+            ))}
+          </div>
+          <p className="ob-note">A session counts as about an hour of moderate training. Tell Herb if that changes.</p>
+        </section>
+      ) : null}
 
-      <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-        {step > 0 ? <button type="button" onClick={previousStep} disabled={busy}>Back</button> : null}
-        {step < 2 ? <button type="button" onClick={nextStep} disabled={busy}>Next</button> : null}
-        {step === 2 ? (
-          <button type="button" onClick={finish} disabled={busy}>
-            {busy ? 'Saving…' : 'Finish'}
-          </button>
-        ) : null}
+      {step === LAST ? (
+        <section>
+          <h1 className="ob-h">Any allergies?</h1>
+          <p className="ob-sub">Optional, but Herb will never put these in your plan. Skip if none.</p>
+          <div className="ob-check">
+            {ALLERGEN_OPTIONS.map((t) => (
+              <label key={t} className={allergens.includes(t) ? 'sel' : ''}>
+                <input type="checkbox" checked={allergens.includes(t)} onChange={() => toggleAllergen(t)} />
+                {allergenLabel(t)}
+              </label>
+            ))}
+          </div>
+          {preview ? (
+            <div className="ob-preview">
+              <p className="s-eyebrow" style={{ marginBottom: 8 }}>Your daily targets · {chosen.label}</p>
+              <div className="ob-preview-grid">
+                <div><b>{preview.target_kcal.toLocaleString('en-GB')}</b><span>kcal</span></div>
+                <div><b>{preview.target_protein_g}g</b><span>protein</span></div>
+                <div><b>{preview.target_carbs_g}g</b><span>carbs</span></div>
+                <div><b>{preview.target_fat_g}g</b><span>fat</span></div>
+              </div>
+              <p className="ob-note" style={{ marginTop: 10 }}>{chosen.targetsNote}</p>
+            </div>
+          ) : null}
+          <p className="ob-note">Dislikes, pace, household size and more live under <b>Tailor your plan</b> once you&rsquo;re in.</p>
+        </section>
+      ) : null}
+
+      {error ? <p role="alert" className="ob-error">{error}</p> : null}
+
+      <div className="ob-nav">
+        {step > 0 ? <button type="button" className="s-btn s-btn-secondary" onClick={back} disabled={busy}>Back</button> : <Link href="/" className="s-btn s-btn-secondary">Cancel</Link>}
+        {step < LAST
+          ? <button type="button" className="s-btn s-btn-primary" onClick={next} disabled={busy}>Next</button>
+          : <button type="button" className="s-btn s-btn-primary" onClick={finish} disabled={busy}>{busy ? 'Saving…' : 'Finish'}</button>}
       </div>
     </main>
   );
