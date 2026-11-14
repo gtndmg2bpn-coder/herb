@@ -26,12 +26,13 @@ const LBS_PER_STONE = 14;
 const KG_PER_LB = 0.45359237;
 
 // KIMI NOTE: diet is a rule-set, not a goal. Keto is live; the other visible options are
-// disabled roadmap placeholders and are never written.
+// disabled roadmap placeholders and are never written. They render greyed out with no
+// "coming soon" tag — founder call, 15 Nov 2026: the label read as cheap.
 const DIET_OPTIONS = [
-  { value: 'keto', label: 'Keto', enabled: true, tag: '' },
-  { value: 'mediterranean', label: 'Mediterranean', enabled: false, tag: 'coming soon' },
-  { value: 'low_carb', label: 'Low-carb', enabled: false, tag: 'coming soon' },
-  { value: 'vegetarian_keto', label: 'Vegetarian keto', enabled: false, tag: 'coming soon' },
+  { value: 'keto', label: 'Keto', enabled: true },
+  { value: 'mediterranean', label: 'Mediterranean', enabled: false },
+  { value: 'low_carb', label: 'Low-carb', enabled: false },
+  { value: 'vegetarian_keto', label: 'Vegetarian keto', enabled: false },
 ];
 
 // KIMI NOTE: allergens are the 14 UK declarables and are hard exclusions. Tokens are stored
@@ -548,7 +549,6 @@ export default function OnboardingPage() {
                   readOnly
                 />
                 {option.label}
-                {option.tag ? <span style={{ fontSize: 12 }}>({option.tag})</span> : null}
               </label>
             ))}
           </fieldset>
