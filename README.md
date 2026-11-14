@@ -22,3 +22,7 @@ npm install
 cp .env.local.example .env.local   # then fill in real values
 npm run dev
 ```
+
+## Builder access
+
+Direct commits from the builder agent verified 2026-11-15. Pipeline: GitHub → Vercel auto-deploy.
