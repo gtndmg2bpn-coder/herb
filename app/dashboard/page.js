@@ -149,7 +149,7 @@ function formatWeight(weightKg, units) {
 // (lb or kg), not st+lb, so this stays flat rather than reusing formatWeight.
 function formatDelta(deltaKg, units) {
   if (deltaKg == null) return null;
-  const sign = deltaKg <= 0 ? '−' : '+'; // minus sign / plus
+  const sign = deltaKg <= 0 ? '\\u2212' : '+'; // minus sign / plus
   if (units === 'imperial') {
     return `${sign}${(Math.abs(deltaKg) * 2.2046226218).toFixed(1)} lb`;
   }
