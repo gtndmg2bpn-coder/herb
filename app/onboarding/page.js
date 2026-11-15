@@ -55,6 +55,17 @@ const DISLIKE_OPTIONS = [
   'avocado', 'tofu', 'marmite / yeast extract', 'prawns',
 ];
 
+// KIMI NOTE: cuisine preference buckets — 10 buckets INCLUDING 'British & Classic',
+// EXCLUDING 'Anytime' (Anytime means "no cuisine" — shakes and bowls — so disliking
+// it would empty breakfast/snack slots; Karum, 16 Nov 2026). 'British & Classic' is
+// included now so its dislikes survive the future category split. Tokens equal
+// recipes.cuisine verbatim — matched, never mapped, same contract discipline as
+// allergens ('British & Classic' keeps its ampersand).
+const CUISINE_BUCKETS = [
+  'British & Classic', 'Italian', 'Indian', 'Thai', 'Asian', 'Spanish',
+  'Mexican', 'Middle Eastern', 'Mediterranean', 'French',
+];
+
 function numberOrZero(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -107,6 +118,13 @@ export default function OnboardingPage() {
   const [allergens, setAllergens] = useState([]);
   const [dislikeChoices, setDislikeChoices] = useState([]);
   const [dislikesText, setDislikesText] = useState('');
+
+  // KIMI NOTE: cuisine like/dislike ticks (Karum, 16 Nov 2026). The two toggles are
+  // mutually exclusive in the UI — liking removes a dislike and vice versa — and
+  // unticked is neutral. The write-time merge in finish() applies Karum's ruling
+  // that like wins if a row ever held both.
+  const [likedCuisines, setLikedCuisines] = useState([]);
+  const [dislikedCuisines, setDislikedCuisines] = useState([]);
 
   // KIMI NOTE: units default to metric. Imperial inputs are kept as their raw ft/in and
   // st/lb strings so the user can type naturally; parsed below is the only canonical form.
@@ -204,6 +222,23 @@ export default function OnboardingPage() {
     setDislikeChoices((current) => (
       current.includes(token) ? current.filter((item) => item !== token) : [...current, token]
     ));
+  }
+
+  // KIMI NOTE: mutually exclusive in the UI — liking a cuisine removes its dislike
+  // and vice versa; unticked is neutral. Untagged/'Anytime' dishes have no cuisine
+  // to match, so a dislike can never empty the breakfast/snack pools.
+  function toggleCuisineLike(cuisine) {
+    setLikedCuisines((current) => (
+      current.includes(cuisine) ? current.filter((item) => item !== cuisine) : [...current, cuisine]
+    ));
+    setDislikedCuisines((current) => current.filter((item) => item !== cuisine));
+  }
+
+  function toggleCuisineDislike(cuisine) {
+    setDislikedCuisines((current) => (
+      current.includes(cuisine) ? current.filter((item) => item !== cuisine) : [...current, cuisine]
+    ));
+    setLikedCuisines((current) => current.filter((item) => item !== cuisine));
   }
 
   function validateIdentity() {
@@ -325,6 +360,12 @@ export default function OnboardingPage() {
       diet: 'keto',
       allergens,
       dislikes,
+      // KIMI NOTE: Karum's ruling — if a cuisine is somehow both liked and disliked
+      // at write time, LIKE WINS (16 Nov 2026; one line to flip if reversed): the
+      // stored dislikes are the ticks minus anything liked. The UI toggles are
+      // mutually exclusive so both-ticked can only come from a future code path.
+      liked_cuisines: likedCuisines,
+      disliked_cuisines: dislikedCuisines.filter((cuisine) => !likedCuisines.includes(cuisine)),
       // Only the four stored target columns. calculateTargets also returns
       // target_fibre_g (a constant 30 g) which has no profiles column; spreading the
       // whole object made the upsert fail (PR #6 regression, fixed 8 Nov).
@@ -567,6 +608,57 @@ export default function OnboardingPage() {
 
       {step === 2 ? (
         <section style={{ display: 'grid', gap: 12 }}>
+          {/* KIMI NOTE: cuisines come FIRST in step 2 — "what you love" before "what to
+              avoid" (Karum, 16 Nov 2026). Like and Dislike are mutually exclusive;
+              unticked is neutral. Disliked cuisines are hard-excluded everywhere
+              (planner pool, swap chooser), liked ones soft-steer lunch and dinner. */}
+          <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'grid', gap: 8 }}>
+            <legend>Cuisines — what do you love, what do you avoid?</legend>
+            <p style={{ margin: 0, color: '#666', fontSize: 13 }}>
+              Liked cuisines steer your lunches and dinners. Disliked cuisines are never planned. Leave both unticked if you&rsquo;re neutral.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+              {CUISINE_BUCKETS.map((cuisine) => {
+                const liked = likedCuisines.includes(cuisine);
+                const disliked = dislikedCuisines.includes(cuisine);
+                const choiceButton = {
+                  border: '1px solid #bbb',
+                  borderRadius: 100,
+                  padding: '2px 10px',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  background: '#fff',
+                  color: '#666',
+                };
+                return (
+                  <div key={cuisine} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <span style={{ fontSize: 14 }}>{cuisine}</span>
+                    <span style={{ display: 'inline-flex', gap: 4 }}>
+                      <button
+                        type="button"
+                        aria-pressed={liked}
+                        onClick={() => toggleCuisineLike(cuisine)}
+                        style={liked ? { ...choiceButton, background: '#2A2932', borderColor: '#2A2932', color: '#FBF7F1' } : choiceButton}
+                      >
+                        Like
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={disliked}
+                        onClick={() => toggleCuisineDislike(cuisine)}
+                        style={disliked ? { ...choiceButton, background: '#FDECEA', borderColor: '#F5C6C0', color: '#b00020' } : choiceButton}
+                      >
+                        Dislike
+                      </button>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </fieldset>
+
           {/* KIMI NOTE: helper line states the product rule plainly — allergens are hard
               exclusions everywhere; dislikes are avoided where possible but never treated as
               a safety constraint. */}
