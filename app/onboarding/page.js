@@ -403,15 +403,18 @@ export default function OnboardingPage() {
           </label>
 
           <label style={{ display: 'grid', gap: 6 }}>
-            Average daily calorie burn (kcal) — optional, if you know it
+            Do you know how many calories you burn on a typical day?
             <input
               type="number"
               min="1"
               step="1"
               value={avgDailyBurnKcal}
               onChange={(event) => setAvgDailyBurnKcal(event.target.value)}
-              placeholder="Leave blank to use activity level"
+              placeholder="Optional — total for the whole day, not just exercise"
             />
+            <span style={{ fontSize: 12, color: '#666' }}>
+              This is your TOTAL daily burn — everything your body burns at rest and moving, not just active calories. Leave blank and we&rsquo;ll estimate it from your activity level.
+            </span>
           </label>
 
           {/* KIMI NOTE: tracker affordance is visual roadmap only — one disabled element,
