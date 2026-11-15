@@ -57,7 +57,7 @@ const DISLIKE_OPTIONS = [
 
 function numberOrZero(value) {
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? 0 : parsed;
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function roundToOne(value) {
