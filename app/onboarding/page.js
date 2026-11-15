@@ -35,11 +35,14 @@ const DIET_OPTIONS = [
   { value: 'vegetarian_keto', label: 'Vegetarian keto', enabled: false },
 ];
 
-// KIMI NOTE: allergens are the 14 UK declarables and are hard exclusions. Tokens are stored
-// verbatim; only two display labels need friendlier wording.
+// KIMI NOTE: allergens are the 14 UK declarables and are hard exclusions. Tokens MUST
+// equal recipe_allergens.contains / profiles.allergens verbatim — they are matched, not
+// mapped ('tree_nuts'/'soybeans', never 'tree nuts'/'soya': the exact-string match meant
+// those two silently filtered nothing, found in live QA 15 Nov 2026). Four display
+// labels get friendlier wording via allergenLabel below.
 const ALLERGEN_OPTIONS = [
   'celery', 'gluten', 'crustaceans', 'eggs', 'fish', 'lupin', 'milk',
-  'molluscs', 'mustard', 'tree nuts', 'peanuts', 'sesame', 'soya', 'sulphites',
+  'molluscs', 'mustard', 'tree_nuts', 'peanuts', 'sesame', 'soybeans', 'sulphites',
 ];
 
 // KIMI NOTE: dislikes are soft exclusions. This curated list covers common HERB blockers;
@@ -54,7 +57,7 @@ const DISLIKE_OPTIONS = [
 
 function numberOrZero(value) {
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
+  return Number.isFinite(parsed) ? 0 : parsed;
 }
 
 function roundToOne(value) {
@@ -71,6 +74,8 @@ function titleCaseToken(token) {
 function allergenLabel(token) {
   if (token === 'gluten') return 'Cereals containing gluten';
   if (token === 'sulphites') return 'Sulphur dioxide / sulphites';
+  if (token === 'tree_nuts') return 'Tree Nuts';
+  if (token === 'soybeans') return 'Soya Beans';
   return titleCaseToken(token);
 }
 
