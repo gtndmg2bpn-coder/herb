@@ -149,7 +149,7 @@ function formatWeight(weightKg, units) {
 // (lb or kg), not st+lb, so this stays flat rather than reusing formatWeight.
 function formatDelta(deltaKg, units) {
   if (deltaKg == null) return null;
-  const sign = deltaKg <= 0 ? '\\u2212' : '+'; // minus sign / plus
+  const sign = deltaKg <= 0 ? '\u2212' : '+'; // minus sign / plus
   if (units === 'imperial') {
     return `${sign}${(Math.abs(deltaKg) * 2.2046226218).toFixed(1)} lb`;
   }
@@ -891,7 +891,7 @@ export default function DashboardPage() {
       weightKg = Math.round((stones * 14 + pounds) * 0.45359237 * 100) / 100;
     } else {
       const raw = String(weightInput).replace(',', '.').trim();
-      if (raw === '') return; // empty field (e.g. a stray second tap after a successful log) — do nothing
+      if (raw === '') return; // empty field (e.g. a stray tap after a successful log) — do nothing
       weightKg = Number(raw);
       if (!Number.isFinite(weightKg) || weightKg <= 0) {
         setError('Weight must be a positive number.');
