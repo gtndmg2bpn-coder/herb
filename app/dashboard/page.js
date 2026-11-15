@@ -40,6 +40,17 @@ const SPEND_CATEGORIES = ['grocery', 'eating_out', 'sundry'];
 // which matched nothing and silently filtered nothing).
 const ALLERGENS = ['celery', 'gluten', 'crustaceans', 'eggs', 'fish', 'lupin', 'milk', 'molluscs', 'mustard', 'tree_nuts', 'peanuts', 'sesame', 'soybeans', 'sulphites'];
 
+// KIMI NOTE: cuisine preference buckets — 10 buckets INCLUDING 'British & Classic',
+// EXCLUDING 'Anytime' (Anytime means "no cuisine" — shakes and bowls — so disliking
+// it would empty breakfast/snack slots; Karum, 16 Nov 2026). Tokens equal
+// recipes.cuisine verbatim — matched, never mapped, same contract discipline as
+// allergens. 'British & Classic' is included now so its dislikes survive the future
+// category split.
+const CUISINES = [
+  'British & Classic', 'Italian', 'Indian', 'Thai', 'Asian', 'Spanish',
+  'Mexican', 'Middle Eastern', 'Mediterranean', 'French',
+];
+
 // Readable labels for display only — never written to the DB, never matched.
 const ALLERGEN_LABELS = {
   celery: 'Celery',
@@ -138,7 +149,7 @@ function formatWeight(weightKg, units) {
 // (lb or kg), not st+lb, so this stays flat rather than reusing formatWeight.
 function formatDelta(deltaKg, units) {
   if (deltaKg == null) return null;
-  const sign = deltaKg <= 0 ? '\u2212' : '+'; // minus sign / plus
+  const sign = deltaKg <= 0 ? '−' : '+'; // minus sign / plus
   if (units === 'imperial') {
     return `${sign}${(Math.abs(deltaKg) * 2.2046226218).toFixed(1)} lb`;
   }
@@ -347,7 +358,7 @@ export default function DashboardPage() {
 
     const { data: prof, error: profError } = await supabase
       .from('profiles')
-      .select('display_name, start_weight_kg, goal_weight_kg, target_kcal, target_protein_g, target_carbs_g, target_fat_g, diet, preferred_units, household_portions, disliked_recipe_ids, disliked_ingredient_ids, allergens, dislikes, sex, date_of_birth, height_cm, activity_level, pace, avg_daily_burn_kcal')
+      .select('display_name, start_weight_kg, goal_weight_kg, target_kcal, target_protein_g, target_carbs_g, target_fat_g, diet, preferred_units, household_portions, disliked_recipe_ids, disliked_ingredient_ids, allergens, dislikes, sex, date_of_birth, height_cm, activity_level, pace, avg_daily_burn_kcal, liked_cuisines, disliked_cuisines')
       .eq('id', uid)
       .maybeSingle();
     if (profError) throw profError;
@@ -377,7 +388,7 @@ export default function DashboardPage() {
 
     const { data: recipeRows, error: recipesError } = await supabase
       .from('recipes')
-      .select('id, name, section, kcal, protein_g, carbs_g, fat_g, fibre_g, portions, image_id, freezes, batch_portions, fresh_portions, fresh_shelf_days')
+      .select('id, name, section, kcal, protein_g, carbs_g, fat_g, fibre_g, portions, image_id, freezes, batch_portions, fresh_portions, fresh_shelf_days, cuisine')
       .order('name');
     if (recipesError) throw recipesError;
 
@@ -593,6 +604,24 @@ export default function DashboardPage() {
     saveProfile({ allergens: [...current] });
   }
 
+  // KIMI NOTE: cuisine like/dislike pills (Karum, 16 Nov 2026). Like and Dislike
+  // are mutually exclusive — ticking one removes the other ("like wins" if a row
+  // ever held both, the same write-time ruling as onboarding). Same saveProfile
+  // write path as the allergen pills. Disliked cuisines hard-exclude from the
+  // planner and the swap chooser; liked ones soft-steer planning.
+  function toggleCuisine(cuisine, kind) {
+    const liked = new Set(profile?.liked_cuisines || []);
+    const disliked = new Set(profile?.disliked_cuisines || []);
+    if (kind === 'like') {
+      if (liked.has(cuisine)) liked.delete(cuisine);
+      else { liked.add(cuisine); disliked.delete(cuisine); }
+    } else {
+      if (disliked.has(cuisine)) disliked.delete(cuisine);
+      else { disliked.add(cuisine); liked.delete(cuisine); }
+    }
+    saveProfile({ liked_cuisines: [...liked], disliked_cuisines: [...disliked] });
+  }
+
   function addDislikedIngredient(ingredientId) {
     if (!ingredientId) return;
     const current = new Set(profile?.disliked_ingredient_ids || []);
@@ -610,12 +639,17 @@ export default function DashboardPage() {
     const disliked = new Set(profile?.disliked_recipe_ids || []);
     const dislikedIngredients = new Set(profile?.disliked_ingredient_ids || []);
     const userAllergens = new Set(profile?.allergens || []);
+    // KIMI NOTE: disliked cuisines are a HARD exclusion, allergen-style (Karum,
+    // 16 Nov 2026) — a recipe whose cuisine is disliked never appears in the swap
+    // chooser. Untagged/'Anytime' recipes have no cuisine to match, so they pass.
+    const dislikedCuisines = new Set(profile?.disliked_cuisines || []);
 
     const afterCurrent = recipes.filter((recipe) => recipe.id !== currentRecipeId);
     const noDislike = afterCurrent.filter((recipe) => !disliked.has(recipe.id));
     const safe = noDislike
       .filter((recipe) => !(allergensByRecipe[recipe.id] || []).some((allergen) => userAllergens.has(allergen)));
-    const noIngDislike = safe.filter((recipe) => {
+    const noCuisineDislike = safe.filter((recipe) => !dislikedCuisines.has(recipe.cuisine));
+    const noIngDislike = noCuisineDislike.filter((recipe) => {
       const ingSet = ingredientsByRecipe[recipe.id];
       if (!ingSet) return true;
       for (const id of dislikedIngredients) {
@@ -632,7 +666,8 @@ export default function DashboardPage() {
       total: recipes.length,
       hiddenDisliked: afterCurrent.length - noDislike.length,
       hiddenAllergens: noDislike.length - safe.length,
-      hiddenIngDislikes: safe.length - noIngDislike.length,
+      hiddenCuisines: safe.length - noCuisineDislike.length,
+      hiddenIngDislikes: noCuisineDislike.length - noIngDislike.length,
     });
   }
 
@@ -1397,6 +1432,7 @@ export default function DashboardPage() {
           <p style={{ margin: '0 0 8px', fontSize: 12, color: MUTED }}>
             Showing {chooser.options.length} of {chooser.total ?? chooser.options.length} recipes — scroll inside the box to see them all.
             {chooser.hiddenAllergens > 0 ? ` ${chooser.hiddenAllergens} hidden by your allergens.` : ''}
+            {chooser.hiddenCuisines > 0 ? ` ${chooser.hiddenCuisines} hidden by your disliked cuisines.` : ''}
             {chooser.hiddenDisliked > 0 ? ` ${chooser.hiddenDisliked} hidden by "never again".` : ''}
             {chooser.hiddenIngDislikes > 0 ? ` ${chooser.hiddenIngDislikes} hidden by your disliked ingredients.` : ''}
           </p>
@@ -1588,6 +1624,58 @@ export default function DashboardPage() {
                 >
                   {ALLERGEN_LABELS[allergen] ?? allergen}
                 </button>
+              );
+            })}
+          </div>
+        </div>
+        <div>
+          <strong style={{ fontSize: 13 }}>Cuisines — like or dislike. Disliked cuisines are never planned or offered as swaps; liked ones steer your week.</strong>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+            {CUISINES.map((cuisine) => {
+              const liked = (profile?.liked_cuisines || []).includes(cuisine);
+              const disliked = (profile?.disliked_cuisines || []).includes(cuisine);
+              return (
+                <span
+                  key={cuisine}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    borderRadius: 100, padding: '5px 6px 5px 14px',
+                    border: `1.5px solid ${disliked ? '#F5C6C0' : liked ? INK : HAIRLINE}`,
+                    background: disliked ? '#FDECEA' : liked ? INK : '#fff',
+                    color: disliked ? '#b00020' : liked ? CREAM : INK,
+                    fontSize: 12, fontWeight: 700, fontFamily: 'inherit',
+                  }}
+                >
+                  {cuisine}
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => toggleCuisine(cuisine, 'like')}
+                    style={{
+                      border: 'none', borderRadius: 100, padding: '3px 10px', fontSize: 10, fontWeight: 700,
+                      cursor: 'pointer', fontFamily: 'inherit',
+                      background: liked ? CREAM : 'transparent',
+                      color: liked ? INK : liked || disliked ? 'rgba(251,247,241,.75)' : MUTED,
+                      textDecoration: liked ? 'none' : 'underline',
+                    }}
+                  >
+                    Like
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => toggleCuisine(cuisine, 'dislike')}
+                    style={{
+                      border: 'none', borderRadius: 100, padding: '3px 10px', fontSize: 10, fontWeight: 700,
+                      cursor: 'pointer', fontFamily: 'inherit',
+                      background: disliked ? '#b00020' : 'transparent',
+                      color: disliked ? '#fff' : liked ? 'rgba(251,247,241,.75)' : MUTED,
+                      textDecoration: disliked ? 'none' : 'underline',
+                    }}
+                  >
+                    Dislike
+                  </button>
+                </span>
               );
             })}
           </div>
