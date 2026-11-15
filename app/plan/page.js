@@ -142,6 +142,11 @@ export default function PlanPage() {
   const [userId, setUserId] = useState(null);
   const [profileAllergens, setProfileAllergens] = useState([]);  // permanent, read-only here
   const [dislikedIds, setDislikedIds] = useState([]);            // permanent, read-only here
+  // KIMI NOTE: cuisine likes/dislikes are PERMANENT profile fields (editable on the
+  // dashboard), read-only here. Dislikes hard-exclude from the picker, the steer
+  // chips and the pool; likes soft-steer the engine via appetite.preferred_cuisines.
+  const [likedCuisines, setLikedCuisines] = useState([]);
+  const [dislikedCuisines, setDislikedCuisines] = useState([]);
 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -181,7 +186,7 @@ export default function PlanPage() {
 
       const { data: profileRow } = await supabase
         .from('profiles')
-        .select('allergens, disliked_recipe_ids')
+        .select('allergens, disliked_recipe_ids, liked_cuisines, disliked_cuisines')
         .eq('id', uid)
         .maybeSingle();
 
@@ -227,8 +232,15 @@ export default function PlanPage() {
       setUserId(uid);
       setProfileAllergens(profileRow?.allergens || []);
       setDislikedIds(profileRow?.disliked_recipe_ids || []);
+      setLikedCuisines(profileRow?.liked_cuisines || []);
+      setDislikedCuisines(profileRow?.disliked_cuisines || []);
+      // KIMI NOTE: disliked cuisines are a HARD exclusion (Karum, 16 Nov 2026) — a
+      // recipe whose cuisine is disliked never appears in this picker, exactly like
+      // a declared allergen. The picker list and the planner pool must agree.
+      const dislikedCuisineSet = new Set(profileRow?.disliked_cuisines || []);
       setRecipeList(
         (recipeRows || [])
+          .filter((r) => !dislikedCuisineSet.has(r.cuisine))
           .map((r) => ({
             id: r.id,
             name: r.name,
@@ -366,12 +378,12 @@ export default function PlanPage() {
         p_week_start: weekStart, p_constraints: constraints,
       });
       if (saveErr) throw saveErr;
-  
+
       const { data: inputs, error: readErr } = await supabase.rpc('get_plan_inputs', {
         p_week_start: weekStart,
       });
       if (readErr) throw readErr;
-  
+
       // BRIDGE ITEM 3 — the client-side merge is RETIRED.
       //
       // get_plan_inputs now selects meal_type, meal_types, cuisine and dish_type
@@ -397,6 +409,13 @@ export default function PlanPage() {
       const allergensById = Object.fromEntries((allergenRows || []).map((row) => [row.recipe_id, row.contains || []]));
       recipePool = recipePool.map((r) => ({ ...r, allergens: allergensById[r.id] || [] }));
 
+      // KIMI NOTE: disliked cuisines are a HARD exclusion, allergen-style (Karum,
+      // 16 Nov 2026). The pool is pre-filtered here — the same place
+      // disliked_recipe_ids already binds — so the engine needs NO cuisine-dislike
+      // knowledge, and a disliked dish in the freezer stays there.
+      const dislikedCuisineSet = new Set(dislikedCuisines);
+      recipePool = recipePool.filter((r) => !dislikedCuisineSet.has(r.cuisine));
+
       // ── BRIDGE ITEMS 4 + 6 — targets reach the engine ────────────────────
       // get_plan_inputs v4 returns `targets` read LIVE from profiles on every
       // call. That is item 6 in one line: commit_targets writes profiles,
@@ -418,6 +437,18 @@ export default function PlanPage() {
         targets: inputs.targets || null,
         diet: inputs.diet || null,
       };
+      // KIMI NOTE: PROFILE LIKES AS A PERMANENT DEFAULT (Karum, 16 Nov 2026). The
+      // manual weekly steer (appetite.cuisines, restored from the saved week above)
+      // takes precedence by construction: likes are handed to the engine as
+      // appetite.preferred_cuisines, which the engine applies ONLY when no manual
+      // cuisine steer is set — and soft-falls back to the full book when the liked
+      // pool cannot fill the week. They are injected here, not saved into
+      // plan_weeks.constraints, so a dashboard edit takes effect on the very next
+      // plan without re-saving the week.
+      planConstraints.appetite = {
+        ...(planConstraints.appetite || {}),
+        preferred_cuisines: likedCuisines,
+      };
 
       const result = generatePlan(planConstraints, inputs.inventory, recipePool, {
         weekStart, seed: useSeed,
@@ -427,7 +458,7 @@ export default function PlanPage() {
         p_week_start: weekStart, p_slots: result.slots,
       });
       if (applyErr) throw applyErr;
-  
+
       // ── COMPONENT (prep) PLANNING ────────────────────────────────────────
       // Runs AFTER the plan exists, and that order is not incidental: component
       // demand is a CONSEQUENCE of which dishes landed on which days, so it
@@ -620,7 +651,7 @@ export default function PlanPage() {
             </header>
 
             <div style={{ display: 'grid', gap: 20 }}>
-              
+
               {/* ── 1 · Plan which meals? (Scope) ─────────────────────── */}
               <section style={cardStyle}>
                 <div style={eyebrowStyle}>Plan which meals?</div>
@@ -804,7 +835,10 @@ export default function PlanPage() {
                     Steers lunch and dinner. Breakfast and snacks are never steered.
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {CUISINE_TAGS.map((tag) => (
+                    {/* KIMI NOTE: disliked cuisines are hidden from the steer chips
+                        (Karum, 16 Nov 2026) — a hard-excluded cuisine must not be
+                        offered as a steer. Unticking one for dislike removes its chip. */}
+                    {CUISINE_TAGS.filter((tag) => !dislikedCuisines.includes(tag)).map((tag) => (
                       <Chip key={tag} on={weekCuisines.includes(tag)} onClick={() => toggleCuisine(tag)}>
                         {tag}
                       </Chip>
