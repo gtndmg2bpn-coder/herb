@@ -82,6 +82,22 @@ const LOCATION_STYLES = {
   cupboard: { wash: 'linear-gradient(160deg,#F1E7D5,#F7F0E2)', textColor: '#5B4530' },
 };
 
+// KIMI NOTE: age is computed from date_of_birth at render, never stored — it stays
+// correct on the user's birthday without any update job. Same arithmetic as
+// lib/targets.js ageFromDob; duplicated here rather than imported because the
+// dashboard is a client component and targets.js stays a pure builder-safe lib.
+function ageFromDob(dateOfBirth) {
+  if (!dateOfBirth) return null;
+  const birth = new Date(dateOfBirth);
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDelta = today.getMonth() - birth.getMonth();
+  if (monthDelta < 0 || (monthDelta === 0 && today.getDate() < birth.getDate())) {
+    age -= 1;
+  }
+  return Math.max(0, age);
+}
+
 function dayLabelShort(iso) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' });
 }
@@ -1031,6 +1047,11 @@ export default function DashboardPage() {
           <h1 style={{ fontWeight: 800, fontSize: 30, letterSpacing: '-.03em', margin: 0 }}>
             Hi, {profile?.display_name || 'there'}
           </h1>
+          {profile?.sex && profile?.date_of_birth ? (
+            <p style={{ margin: '6px 0 0', fontSize: 13, fontWeight: 600, color: MUTED }}>
+              {profile.sex === 'male' ? 'Male' : profile.sex === 'female' ? 'Female' : 'Other'} · {ageFromDob(profile.date_of_birth)} yrs
+            </p>
+          ) : null}
           {profile ? (
             <>
               <div style={{ display: 'flex', gap: 20, marginTop: 20 }}>
