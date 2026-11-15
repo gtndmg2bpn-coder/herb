@@ -891,7 +891,7 @@ export default function DashboardPage() {
       weightKg = Math.round((stones * 14 + pounds) * 0.45359237 * 100) / 100;
     } else {
       const raw = String(weightInput).replace(',', '.').trim();
-      if (raw === '') return; // empty field (e.g. a stray tap after a successful log) — do nothing
+      if (raw === '') return; // empty field (e.g. a stray second tap after a successful log) — do nothing
       weightKg = Number(raw);
       if (!Number.isFinite(weightKg) || weightKg <= 0) {
         setError('Weight must be a positive number.');
