@@ -203,6 +203,20 @@ select:focus {
 /* Minimum touch target, applied to every control that takes a tap. */
 .herb-tap { min-height: 48px; }
 
+/* Dish-image carousel (/plan "Only plan these dishes"). Inline styles can't
+   hide the scrollbar or hold scroll-snap, so the scroller lives here: one
+   horizontally snap-scrolling row of dish cards, no visible scrollbar. */
+.herb-carousel {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-snap-type: x mandatory;
+  padding-bottom: 4px;
+}
+.herb-carousel::-webkit-scrollbar { display: none; }
+.herb-carousel > * { flex: 0 0 auto; scroll-snap-align: start; }
+
 /* ---------------------------------------------------------------------------
    /shopping
    --------------------------------------------------------------------------- */

@@ -188,7 +188,7 @@ export default function PlanPage() {
         .from('pantry_lots')
         .select('recipe_id, quantity, expiry_date')
         .eq('user_id', uid).eq('item_kind', 'recipe').eq('location', 'freezer');
-      const { data: recipeRows } = await supabase.from('recipes').select('id, name, protein_type, meal_type, meal_types, cuisine, dish_type, freezes, batch_portions, fresh_portions, fresh_shelf_days');
+      const { data: recipeRows } = await supabase.from('recipes').select('id, name, protein_type, meal_type, meal_types, cuisine, dish_type, freezes, batch_portions, fresh_portions, fresh_shelf_days, image_id');
 
       if (cancelled) return;
 
@@ -271,6 +271,7 @@ export default function PlanPage() {
             name: r.name,
             cuisine: r.cuisine || null,
             dish_type: r.dish_type || null,
+            image_id: r.image_id || null,
             meal_types: Array.isArray(r.meal_types) && r.meal_types.length
               ? r.meal_types
               : (r.meal_type ? [r.meal_type] : []),
@@ -999,32 +1000,61 @@ export default function PlanPage() {
                     Showing {visibleRecipes.length} of {recipeList.length}
                     {steerOn ? ' · filtered by the chips above' : ''}
                   </div>
-                  <div style={{ maxHeight: 260, overflowY: 'auto', border: `1px solid ${HAIRLINE}`, borderRadius: 12, background: '#fff' }}>
-                    {visibleRecipes.length === 0 ? (
-                      <div style={{ padding: '14px 12px', fontSize: 13, color: MUTED }}>
-                        No dishes match. Clear a chip or the search box.
-                      </div>
-                    ) : visibleRecipes.map((r) => (
-                      <button
-                        key={r.id}
-                        type="button"
-                        onClick={() => toggleIncluded(r.id)}
-                        style={{
-                          display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12,
-                          width: '100%', textAlign: 'left', border: 'none',
-                          borderBottom: `1px solid ${HAIRLINE}`, background: includeIds.includes(r.id) ? '#F3F8F4' : 'transparent',
-                          padding: '9px 12px', fontSize: 13, fontWeight: includeIds.includes(r.id) ? 700 : 500,
-                          color: INK, cursor: 'pointer', fontFamily: 'inherit',
-                        }}
-                      >
-                        <span>{includeIds.includes(r.id) ? '✓ ' : '+ '}{r.name}</span>
-                        <span style={{ fontSize: 11, color: MUTED, whiteSpace: 'nowrap', fontWeight: 500 }}>
-                          {[r.cuisine, r.dish_type ? DISH_LABEL[r.dish_type] || r.dish_type : null]
-                            .filter(Boolean).join(' · ') || 'untagged'}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
+                  {/* ── Dish carousel ─────────────────────────────────────
+                      The chooser is a carousel of dish cards, not a text
+                      scroll — you pick with your eyes. Images are repo assets
+                      at /assets/<image_id>.jpg; recipes with no image_id get an
+                      honest initial tile rather than a broken picture. Tap a
+                      card to pin it; the chips and search above filter it. */}
+                  {visibleRecipes.length === 0 ? (
+                    <div style={{ padding: '14px 12px', fontSize: 13, color: MUTED, border: `1px solid ${HAIRLINE}`, borderRadius: 12, background: '#fff' }}>
+                      No dishes match. Clear a chip or the search box.
+                    </div>
+                  ) : (
+                    <div className="herb-carousel">
+                      {visibleRecipes.map((r) => {
+                        const pinned = includeIds.includes(r.id);
+                        return (
+                          <button
+                            key={r.id}
+                            type="button"
+                            onClick={() => toggleIncluded(r.id)}
+                            aria-pressed={pinned}
+                            style={{
+                              width: 136, border: `2px solid ${pinned ? INK : HAIRLINE}`,
+                              borderRadius: 14, background: '#fff', padding: 0,
+                              overflow: 'hidden', cursor: 'pointer', fontFamily: 'inherit',
+                              textAlign: 'left',
+                            }}
+                          >
+                            {r.image_id ? (
+                              <span style={{ position: 'relative', display: 'block', aspectRatio: '4 / 3', backgroundColor: '#F1E7D5', backgroundImage: `url(/assets/${r.image_id}.jpg)`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
+                                {pinned && (
+                                  <span style={{ position: 'absolute', top: 6, right: 6, width: 24, height: 24, borderRadius: '50%', background: INK, color: CREAM, display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 700 }}>✓</span>
+                                )}
+                              </span>
+                            ) : (
+                              <span style={{ position: 'relative', display: 'grid', placeItems: 'center', aspectRatio: '4 / 3', backgroundColor: '#F1E7D5', color: MUTED, fontFamily: 'var(--font-newsreader), Georgia, serif', fontStyle: 'italic', fontSize: 34 }}>
+                                {r.name.charAt(0)}
+                                {pinned && (
+                                  <span style={{ position: 'absolute', top: 6, right: 6, width: 24, height: 24, borderRadius: '50%', background: INK, color: CREAM, display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 700 }}>✓</span>
+                                )}
+                              </span>
+                            )}
+                            <span style={{ display: 'block', padding: '8px 10px 10px' }}>
+                              <span style={{ display: 'block', fontSize: 13.5, fontWeight: 600, lineHeight: 1.25, color: INK, fontFamily: 'var(--font-newsreader), Georgia, serif', fontStyle: 'italic' }}>
+                                {r.name}
+                              </span>
+                              <span style={{ display: 'block', fontSize: 10.5, color: MUTED, marginTop: 3 }}>
+                                {[r.cuisine, r.dish_type ? DISH_LABEL[r.dish_type] || r.dish_type : null]
+                                  .filter(Boolean).join(' · ') || 'untagged'}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </section>
 
