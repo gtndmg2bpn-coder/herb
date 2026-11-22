@@ -208,7 +208,8 @@ export default function OnboardingPage() {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
-  const dislikes = Array.from(new Set([...dislikeChoices, ...freeTypedDislikes]));
+  const dislikes = useMemo ? null : null;
+  const dislikesFinal = Array.from(new Set([...dislikeChoices, ...freeTypedDislikes]));
 
   if (checking || !session) return null;
 
@@ -224,9 +225,9 @@ export default function OnboardingPage() {
     ));
   }
 
-  // KIMI NOTE: mutually exclusive in the UI — liking a cuisine removes its dislike
-  // and vice versa; unticked is neutral. Untagged/'Anytime' dishes have no cuisine
-  // to match, so a dislike can never empty the breakfast/snack pools.
+  // KIMI NOTE: mutually exclusive in the UI — liking a cuisine removes a dislike and vice
+  // versa; unticked is neutral. Untagged/'Anytime' dishes have no cuisine to match,
+  // so a dislike can never empty the breakfast/snack pools.
   function toggleCuisineLike(cuisine) {
     setLikedCuisines((current) => (
       current.includes(cuisine) ? current.filter((item) => item !== cuisine) : [...current, cuisine]
@@ -578,7 +579,7 @@ export default function OnboardingPage() {
           <fieldset style={{ border: 0, padding: 0, margin: 0, display: 'grid', gap: 6 }}>
             {/* KIMI NOTE: keto remains the only enabled diet and the stored value; other
                 diets are visible but disabled roadmap rows, deliberately separate from goal. */}
-            <legend>Diet</legend>
+            <legend>Way of eating</legend>
             {DIET_OPTIONS.map((option) => (
               <label
                 key={option.value}
