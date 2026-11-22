@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getBrowserClient } from '../../lib/supabaseBrowser';
+import { signInAsDemo } from '../../lib/demoLogin';
 
 // Editorial split-screen auth layout, matching the Signup/Login design file.
 // Left: full-bleed photography + gradient + serif quote. Right: the form pane.
@@ -87,6 +88,27 @@ export default function LoginPage() {
       return;
     }
 
+    router.push(prof?.onboarded_at ? '/dashboard' : '/onboarding');
+  }
+
+  // DEV-PHASE ONLY (Karum, 22 Nov 2026 — no sign-up in dev): one-tap demo
+  // entry. Same post-login routing as a normal sign-in.
+  async function onDemo() {
+    setError('');
+    setResetMessage('');
+    setBusy(true);
+    const { data, error: demoError } = await signInAsDemo();
+    if (demoError) {
+      setBusy(false);
+      setError(demoError.message);
+      return;
+    }
+    const { data: prof } = await getBrowserClient()
+      .from('profiles')
+      .select('onboarded_at')
+      .eq('id', data.user.id)
+      .maybeSingle();
+    setBusy(false);
     router.push(prof?.onboarded_at ? '/dashboard' : '/onboarding');
   }
 
@@ -229,6 +251,26 @@ export default function LoginPage() {
             {busy ? 'One moment…' : 'Log in'}
           </button>
         </form>
+
+        {/* Dev-phase demo entry — no account needed (Karum, 22 Nov 2026). */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 24 }}>
+          <span style={{ flex: 1, height: 1, background: HAIRLINE }} />
+          <span style={{ fontSize: 12, fontWeight: 600, color: MUTED }}>development preview</span>
+          <span style={{ flex: 1, height: 1, background: HAIRLINE }} />
+        </div>
+        <button
+          type="button"
+          onClick={onDemo}
+          disabled={busy}
+          style={{
+            marginTop: 14, width: '100%', minHeight: 48,
+            background: '#fff', color: INK, border: `1.5px solid ${HAIRLINE}`,
+            borderRadius: 100, padding: 14, fontSize: 15, fontWeight: 700,
+            fontFamily: 'inherit', cursor: 'pointer', opacity: busy ? 0.7 : 1,
+          }}
+        >
+          Enter the demo — no account needed
+        </button>
 
         <p style={{ fontSize: 13, color: MUTED, marginTop: 28 }}>
           By continuing you agree to Herb&rsquo;s terms and privacy policy.
