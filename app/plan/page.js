@@ -1,4 +1,3 @@
-// app/plan/page.js
 'use client';
 // app/plan/page.js
 
@@ -6,6 +5,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { getBrowserClient } from '../../lib/supabaseBrowser';
 import { generatePlan } from '../../lib/generatePlan';
+import { setMealWindows } from '../../lib/actions';
 import { planComponents } from '../../lib/planComponents';
 import { isoDate, addDays, dayLabel } from '../../lib/dates';
 
@@ -127,7 +127,10 @@ export default function PlanPage() {
   const [freezerLots, setFreezerLots] = useState([]);
 
   // Constraint state v2
-  const [mealsToPlan, setMealsToPlan] = useState(['dinner']);
+  // KIMI NOTE: the default is now ALL FIVE windows (Karum, 22 Nov 2026) — three
+  // mains + two snacks. The profile default (profiles.meal_windows, read in load)
+  // replaces it once it arrives, and the saved week's meals_to_plan replaces both.
+  const [mealsToPlan, setMealsToPlan] = useState(PLANNABLE_MEALS.map((m) => m.key));
   const [outs, setOuts] = useState([]);           // array of { date, meal }
   const [batchDays, setBatchDays] = useState([]); // array of date strings
   const [freezerFirst, setFreezerFirst] = useState(true);
@@ -147,6 +150,11 @@ export default function PlanPage() {
   // chips and the pool; likes soft-steer the engine via appetite.preferred_cuisines.
   const [likedCuisines, setLikedCuisines] = useState([]);
   const [dislikedCuisines, setDislikedCuisines] = useState([]);
+  // This week's shape sheet (meal windows). profileWindows is the saved profile
+  // default — kept in state so the sheet can offer to persist changes to it.
+  const [windowsSheetOpen, setWindowsSheetOpen] = useState(false);
+  const [defaultWindowsOn, setDefaultWindowsOn] = useState(false);
+  const [profileWindows, setProfileWindows] = useState(null);
 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -186,7 +194,7 @@ export default function PlanPage() {
 
       const { data: profileRow } = await supabase
         .from('profiles')
-        .select('allergens, disliked_recipe_ids, liked_cuisines, disliked_cuisines')
+        .select('allergens, disliked_recipe_ids, liked_cuisines, disliked_cuisines, meal_windows')
         .eq('id', uid)
         .maybeSingle();
 
@@ -207,11 +215,15 @@ export default function PlanPage() {
       // /plan reset to dinner-only with no outs, no batch days and no appetite,
       // silently discarding what was saved. That is why breakfast kept coming
       // back unticked. get_plan_inputs already returns them.
+      let restoredMeals = false;
       try {
         const { data: inputs } = await supabase.rpc('get_plan_inputs', { p_week_start: start });
         const saved = inputs?.constraints;
         if (!cancelled && saved && typeof saved === 'object') {
-          if (Array.isArray(saved.meals_to_plan) && saved.meals_to_plan.length) setMealsToPlan(saved.meals_to_plan);
+          if (Array.isArray(saved.meals_to_plan) && saved.meals_to_plan.length) {
+            setMealsToPlan(saved.meals_to_plan);
+            restoredMeals = true;
+          }
           if (Array.isArray(saved.outs)) setOuts(saved.outs);
           if (Array.isArray(saved.batch_days)) setBatchDays(saved.batch_days);
           if (Array.isArray(saved.guests)) setGuests(saved.guests);
@@ -228,6 +240,19 @@ export default function PlanPage() {
           if (Array.isArray(ap.include_recipe_ids)) setIncludeIds(ap.include_recipe_ids);
         }
       } catch { /* no saved week yet — start from the defaults */ }
+
+      // The saved week's meals win; otherwise fall back to the profile default
+      // (profiles.meal_windows, whose column default is all five windows). A week
+      // saved by an older session with dinner-only is honoured as saved — the
+      // shape sheet is how that gets changed.
+      if (!cancelled && !restoredMeals) {
+        const prefs = profileRow?.meal_windows;
+        if (Array.isArray(prefs) && prefs.length) {
+          const valid = PLANNABLE_MEALS.map((m) => m.key);
+          setMealsToPlan(valid.filter((k) => prefs.includes(k)));
+        }
+      }
+      if (!cancelled) setProfileWindows(profileRow?.meal_windows || null);
 
       setUserId(uid);
       setProfileAllergens(profileRow?.allergens || []);
@@ -301,6 +326,20 @@ export default function PlanPage() {
   function toggleMeal(m) {
     setMealsToPlan((cur) => (cur.includes(m) ? cur.filter((x) => x !== m) : [...cur, m]));
     setSaved(false);
+  }
+
+  // KIMI NOTE: persists the current window selection as the profile default via
+  // the set_meal_windows RPC (security-definer, auth.uid()-scoped — mirrors
+  // commit_targets). The weekly constraints in plan_weeks still override it for
+  // a saved week, so this never rewrites history.
+  async function saveWindowsDefault() {
+    const { error: windowsErr } = await setMealWindows({ mealWindows: mealsToPlan });
+    if (windowsErr) {
+      setError(windowsErr.message);
+    } else {
+      setProfileWindows([...mealsToPlan]);
+      setDefaultWindowsOn(false);
+    }
   }
 
   function addGuest() {
@@ -652,16 +691,46 @@ export default function PlanPage() {
 
             <div style={{ display: 'grid', gap: 20 }}>
 
-              {/* ── 1 · Plan which meals? (Scope) ─────────────────────── */}
+              {/* ── 1 · This week's shape ───────────────────────────────
+                  A summary, not a form — the five windows as chips with a
+                  Change button that opens the bottom sheet. Dessert counts as
+                  a snack: the engine has no dessert tag, a dessert IS a
+                  snack-tagged dish, so the two snack windows already carry
+                  desserts (copy only, no data change). */}
               <section style={cardStyle}>
-                <div style={eyebrowStyle}>Plan which meals?</div>
-                <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-                  {PLANNABLE_MEALS.map((m) => (
-                    <label key={m.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
-                      <input type="checkbox" checked={mealsToPlan.includes(m.key)} onChange={() => toggleMeal(m.key)} style={{ accentColor: INK, width: 18, height: 18 }} />
-                      {m.label}
-                    </label>
-                  ))}
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={eyebrowStyle}>This week&rsquo;s shape</div>
+                  <button
+                    type="button"
+                    onClick={() => setWindowsSheetOpen(true)}
+                    className="herb-btn herb-btn-secondary herb-btn-inline"
+                  >
+                    Change
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                  {PLANNABLE_MEALS.map((m) => {
+                    const on = mealsToPlan.includes(m.key);
+                    return (
+                      <span
+                        key={m.key}
+                        style={{
+                          border: `1px solid ${on ? INK : HAIRLINE}`,
+                          background: on ? INK : '#fff',
+                          color: on ? CREAM : MUTED,
+                          borderRadius: 100,
+                          padding: '6px 13px',
+                          fontSize: 12.5,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {m.label}
+                      </span>
+                    );
+                  })}
+                </div>
+                <div style={{ fontSize: 12, color: MUTED, marginTop: 10 }}>
+                  Three mains, two snacks — dessert counts as a snack. Tap Change to set your own default.
                 </div>
               </section>
 
@@ -1269,6 +1338,66 @@ export default function PlanPage() {
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* ── This week's shape sheet ─────────────────────────────
+                  Bottom sheet on a phone, centred card on desktop (the
+                  herb-sheet classes). Toggling a window edits this week
+                  immediately — mealsToPlan is the same state the outs pills,
+                  guest rows and payloads have always derived from. */}
+              {windowsSheetOpen && (
+                <div className="herb-sheet-scrim" onClick={() => setWindowsSheetOpen(false)}>
+                  {/* stopPropagation so tapping inside the sheet doesn't close it */}
+                  <div className="herb-sheet" onClick={(e) => e.stopPropagation()}>
+                    <div style={eyebrowStyle}>This week&rsquo;s shape</div>
+                    <div style={{ display: 'grid' }}>
+                      {PLANNABLE_MEALS.map((m) => {
+                        const on = mealsToPlan.includes(m.key);
+                        return (
+                          <button
+                            key={m.key}
+                            type="button"
+                            onClick={() => {
+                              // At least one window must stay on — a week with
+                              // zero planned meals plans nothing.
+                              if (on && mealsToPlan.length === 1) return;
+                              toggleMeal(m.key);
+                            }}
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                              minHeight: 52, border: 'none', borderBottom: `1px solid ${HAIRLINE}`,
+                              background: 'none', padding: '6px 0', fontFamily: 'inherit', cursor: 'pointer',
+                            }}
+                          >
+                            <span style={{ fontSize: 15, fontWeight: 600, color: INK }}>{m.label}</span>
+                            <span style={{ width: 44, height: 24, borderRadius: 100, background: on ? GREEN : HAIRLINE, position: 'relative', transition: 'background .15s' }}>
+                              <span style={{ position: 'absolute', top: 3, left: on ? 23 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left .15s' }} />
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
+                      Dessert counts as a snack — anything snack-tagged can land in either snack window.
+                    </div>
+                    <Toggle on={defaultWindowsOn} onChange={setDefaultWindowsOn} label="Always plan these meals" />
+                    {profileWindows && defaultWindowsOn && (
+                      <div style={{ fontSize: 12, color: MUTED }}>
+                        Saves to your profile — every new week starts with these windows.
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      className="herb-btn herb-btn-primary"
+                      onClick={async () => {
+                        if (defaultWindowsOn) await saveWindowsDefault();
+                        setWindowsSheetOpen(false);
+                      }}
+                    >
+                      Done
+                    </button>
+                  </div>
                 </div>
               )}
 
