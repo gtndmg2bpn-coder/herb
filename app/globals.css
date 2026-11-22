@@ -351,23 +351,29 @@ select:focus {
   .herb-btn-inline { width: auto; }
 }
 
-/* Sticky CTA bar at the foot of the viewport on a phone — the primary action
+/* Fixed CTA bar at the foot of the viewport on a phone — the primary action
    is always under the thumb (.herb-page reserves the 96px below it). Inline
-   on desktop, where the page has room and the mouse can travel. */
+   on desktop, where the page has room and the mouse can travel.
+   FIXED, not sticky, and that is deliberate: the bar is a direct child of the
+   .herb-page grid, and a grid item's sticky containing block is its own grid
+   area — one row exactly as tall as the bar — so it had zero room to stick
+   and silently behaved like static. Fixed pins it regardless of layout. */
 .herb-cta {
-  position: sticky;
+  position: fixed;
   bottom: 0;
+  left: 0;
+  right: 0;
   z-index: 20;
   background: var(--cream);
   border-top: 1px solid var(--hairline);
-  padding: 12px 0;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
   display: flex;
   gap: 12px;
   align-items: center;
   flex-wrap: wrap;
 }
 @media (min-width: 720px) {
-  .herb-cta { position: static; border-top: 0; padding: 0; }
+  .herb-cta { position: static; bottom: auto; left: auto; right: auto; border-top: 0; padding: 0; }
 }
 
 /* Sheets: a bottom sheet on a phone, a centred card on desktop. Same markup. */
