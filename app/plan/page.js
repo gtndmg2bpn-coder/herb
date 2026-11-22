@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { getBrowserClient } from '../../lib/supabaseBrowser';
 import { generatePlan } from '../../lib/generatePlan';
 import { setMealWindows } from '../../lib/actions';
+import { recipeImageUrl } from '../../lib/recipeImage';
 import { planComponents } from '../../lib/planComponents';
 import { isoDate, addDays, dayLabel } from '../../lib/dates';
 
@@ -1002,10 +1003,11 @@ export default function PlanPage() {
                   </div>
                   {/* ── Dish carousel ─────────────────────────────────────
                       The chooser is a carousel of dish cards, not a text
-                      scroll — you pick with your eyes. Images are repo assets
-                      at /assets/<image_id>.jpg; recipes with no image_id get an
-                      honest initial tile rather than a broken picture. Tap a
-                      card to pin it; the chips and search above filter it. */}
+                      scroll — you pick with your eyes. Images come from
+                      recipeImageUrl (the single source of truth for image
+                      URLs); recipes with no image_id get an honest initial
+                      tile rather than a broken picture. Tap a card to pin
+                      it; the chips and search above filter it. */}
                   {visibleRecipes.length === 0 ? (
                     <div style={{ padding: '14px 12px', fontSize: 13, color: MUTED, border: `1px solid ${HAIRLINE}`, borderRadius: 12, background: '#fff' }}>
                       No dishes match. Clear a chip or the search box.
@@ -1028,7 +1030,7 @@ export default function PlanPage() {
                             }}
                           >
                             {r.image_id ? (
-                              <span style={{ position: 'relative', display: 'block', aspectRatio: '4 / 3', backgroundColor: '#F1E7D5', backgroundImage: `url(/assets/${r.image_id}.jpg)`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
+                              <span style={{ position: 'relative', display: 'block', aspectRatio: '4 / 3', backgroundColor: '#F1E7D5', backgroundImage: `url('${recipeImageUrl(r.image_id)}')`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
                                 {pinned && (
                                   <span style={{ position: 'absolute', top: 6, right: 6, width: 24, height: 24, borderRadius: '50%', background: INK, color: CREAM, display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 700 }}>✓</span>
                                 )}
