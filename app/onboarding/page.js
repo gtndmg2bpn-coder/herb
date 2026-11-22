@@ -208,8 +208,7 @@ export default function OnboardingPage() {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
-  const dislikes = useMemo ? null : null;
-  const dislikesFinal = Array.from(new Set([...dislikeChoices, ...freeTypedDislikes]));
+  const dislikes = Array.from(new Set([...dislikeChoices, ...freeTypedDislikes]));
 
   if (checking || !session) return null;
 
@@ -225,9 +224,9 @@ export default function OnboardingPage() {
     ));
   }
 
-  // KIMI NOTE: mutually exclusive in the UI — liking a cuisine removes a dislike and vice
-  // versa; unticked is neutral. Untagged/'Anytime' dishes have no cuisine to match,
-  // so a dislike can never empty the breakfast/snack pools.
+  // KIMI NOTE: mutually exclusive in the UI — liking a cuisine removes its dislike
+  // and vice versa; unticked is neutral. Untagged/'Anytime' dishes have no cuisine
+  // to match, so a dislike can never empty the breakfast/snack pools.
   function toggleCuisineLike(cuisine) {
     setLikedCuisines((current) => (
       current.includes(cuisine) ? current.filter((item) => item !== cuisine) : [...current, cuisine]
