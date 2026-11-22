@@ -351,6 +351,25 @@ select:focus {
   .herb-btn-inline { width: auto; }
 }
 
+/* Sticky CTA bar at the foot of the viewport on a phone — the primary action
+   is always under the thumb (.herb-page reserves the 96px below it). Inline
+   on desktop, where the page has room and the mouse can travel. */
+.herb-cta {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  background: var(--cream);
+  border-top: 1px solid var(--hairline);
+  padding: 12px 0;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+@media (min-width: 720px) {
+  .herb-cta { position: static; border-top: 0; padding: 0; }
+}
+
 /* Sheets: a bottom sheet on a phone, a centred card on desktop. Same markup. */
 .herb-sheet-scrim {
   position: fixed;
