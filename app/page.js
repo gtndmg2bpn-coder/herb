@@ -39,7 +39,7 @@ export default async function HomePage() {
               <p className="s-eyebrow">The food platform that does the maths</p>
               <h1 className="s-h1">Eat <em className="s-serif">well</em>, even when life doesn&rsquo;t go to plan.</h1>
               <p className="s-lede">
-                Herb plans a week of proper food sized to your weight, costs every portion to the penny and writes the shopping list.
+                Herb plans a week of proper food sized to you, costs every portion to the penny and writes the shopping list.
                 Eat out, work late, miss a meal: the plan rebalances. It doesn&rsquo;t start again on Monday.
               </p>
               <div className="s-btns">
@@ -80,8 +80,8 @@ export default async function HomePage() {
         {/* £/lbs */}
         <section className="s-section s-rule">
           <div className="s-wrap">
-            <p className="s-eyebrow">Money and weight, together</p>
-            <h2 className="s-h2" style={{ maxWidth: '20ch' }}>Herb looks after the £/lbs.</h2>
+            <p className="s-eyebrow">Money and numbers, together</p>
+            <h2 className="s-h2" style={{ maxWidth: '20ch' }}>Herb looks after the money and the maths.</h2>
             <p className="s-lede">Most apps count calories. Some help with the shopping. Herb keeps both in the same place, because they&rsquo;re the same decision.</p>
             <div className="s-split">
               <div className="s-panel s-panel-ink">
@@ -94,12 +94,12 @@ export default async function HomePage() {
                 </ul>
               </div>
               <div className="s-panel s-panel-white">
-                <div className="s-big" style={{ color: 'var(--pink)' }}>lbs</div>
-                <h3 className="s-h3" style={{ marginTop: 18 }}>The weight</h3>
+                <div className="s-big" style={{ color: 'var(--pink)' }}>kcal</div>
+                <h3 className="s-h3" style={{ marginTop: 18 }}>The numbers</h3>
                 <ul className="s-list">
                   <li>Calories set from your weight and pace, protein first.</li>
                   <li>Portions sized to you. Herbs and spices stay as written.</li>
-                  <li>A steady, weekly deficit that survives a night out.</li>
+                  <li>A steady week that survives a night out.</li>
                 </ul>
               </div>
             </div>
@@ -134,7 +134,7 @@ export default async function HomePage() {
                 <p className="s-eyebrow">Hack Away · coming this winter</p>
                 <h2 className="s-h2">Pie, mash and greens. Still on the plan.</h2>
                 <p className="s-body" style={{ fontSize: 16 }}>
-                  The food you&rsquo;d normally give up to lose weight, rebuilt to fit your numbers: proper British comfort food, takeaway favourites
+                  The food you&rsquo;d normally give up, rebuilt to fit your numbers: proper British comfort food, takeaway favourites
                   and puddings. Celeriac mash, almond pastry lids, edamame mushy peas. 45 new dishes, written and being tested now.
                 </p>
                 <div className="s-tags">
@@ -186,7 +186,7 @@ export default async function HomePage() {
           <div className="s-wrap">
             <div className="s-cta">
               <h2 className="s-h2">Start with one week.</h2>
-              <p className="s-body">Tell Herb your weight and your goal. It plans the week, sizes every portion to you and writes the list. Free to start.</p>
+              <p className="s-body">Tell Herb about you. It plans the week, sizes every portion to you and writes the list. Free to start.</p>
               <div className="s-btns">
                 <Link href="/signup" className="s-btn s-btn-primary">Start free</Link>
               </div>

@@ -34,7 +34,7 @@ const METHOD = [
 ];
 
 const REFUSALS = [
-  { title: 'Not a diet app', body: 'Herb is a food platform. The recipes are high in protein and low in carbs because that keeps people full while they lose weight, but it is real food you would cook anyway.' },
+  { title: 'Not a diet app', body: 'Herb is a food platform, not a diet. The recipes are high in protein and low in carbs because that keeps you full for hours — but it is real food you would cook anyway, and a way of eating you can keep.' },
   { title: 'No made-up numbers', body: 'If a figure cannot be traced to a label, a price or a sum, it does not go on the page. Where a check is unfinished, the page says so.' },
   { title: 'No gimmicks', body: 'No discount codes, no countdown timers, no “only 3 left”. Herb asks what it needs to size your plan and nothing it doesn’t.' },
   { title: 'Nothing sold to you', body: 'No product links, no affiliate deals, no “you must take”. Where Herb talks about food or supplements it gives the evidence and the source, and leaves the decision with you.' },
@@ -74,7 +74,7 @@ export default async function AboutPage() {
                 Proper food. Honest numbers. <em className="s-serif" style={{ fontWeight: 500 }}>A bill you can see.</em>
               </h1>
               <p className="s-lede">
-                Most people trying to lose weight run three systems at once: an app for the calories, a list for the shopping,
+                Most people trying to eat well and stay on top of their weight run three systems at once: an app for the calories, a list for the shopping,
                 and a fridge full of half-used packs. Herb puts the food, the numbers and the cost in one plan, sized to you,
                 and keeps it standing when the week goes sideways.
               </p>
@@ -100,7 +100,7 @@ export default async function AboutPage() {
               <h2 className="s-h2">Eating well shouldn&rsquo;t need a spreadsheet.</h2>
               <div className="s-prose">
                 <p>
-                  Losing weight is not hard to understand. Eat a bit less than you burn, keep the protein up, and keep doing it.
+                  The maths is not hard to understand. Eat to your numbers, keep the protein up, and keep doing it.
                   What&rsquo;s hard is doing it on a Tuesday in November with a full day behind you, a fridge that doesn&rsquo;t match
                   the plan, and a food bill that has quietly gone up.
                 </p>
@@ -163,8 +163,8 @@ export default async function AboutPage() {
             <div className="s-prose">
               <p>
                 Herb&rsquo;s founder spent twenty years in food manufacturing and operations, running operations for a UK food
-                manufacturer, and holds food safety and HACCP qualifications. The problem he set out to solve was his own: losing
-                weight without living on a spreadsheet, and without the food bill getting out of hand.
+                manufacturer, and holds food safety and HACCP qualifications. The problem he set out to solve was his own: eating
+                well and keeping his weight in hand without living on a spreadsheet, and without the food bill getting out of hand.
               </p>
               <p>
                 The method comes straight from the factory. Know exactly what goes into every portion. Know exactly what it costs.

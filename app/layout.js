@@ -30,7 +30,7 @@ const newsreader = localFont({
 
 export const metadata = {
   title: 'HERB — cook smarter, eat well',
-  description: 'Herb plans your week, tracks the macros and the cost, and rebalances when life gets in the way. Food, health and culture — not a diet.',
+  description: 'Herb plans your week, tracks the macros and the cost, and rebalances when life gets in the way. Food, health and culture — a lifestyle, not a diet.',
 };
 
 // THE mobile fix: without this, phones render the page at ~980px desktop width
