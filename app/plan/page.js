@@ -8,6 +8,7 @@ import { generatePlan } from '../../lib/generatePlan';
 import { setMealWindows } from '../../lib/actions';
 import { recipeImageUrl } from '../../lib/recipeImage';
 import { planComponents } from '../../lib/planComponents';
+import { signInAsDemo } from '../../lib/demoLogin';
 import { isoDate, addDays, dayLabel } from '../../lib/dates';
 
 // Editorial design tokens (match dashboard / spend / recipe book)
@@ -302,6 +303,16 @@ export default function PlanPage() {
     setGuests((cur) => cur.filter((g) => inWindow.has(g.date)));
     setPlanResult(null);
     setDirty(true);
+  }
+
+  // DEV-PHASE ONLY: one-tap demo entry on the logged-out card (Karum, 22 Nov
+  // 2026 — no sign-up in dev). Signs in as the shared Dave test user, then
+  // reloads so load() runs against the fresh session.
+  async function onDemo() {
+    setError(null);
+    const { error: demoError } = await signInAsDemo();
+    if (demoError) setError(demoError.message);
+    else window.location.reload();
   }
 
   function toggleWeekAllergen(code) {
@@ -684,6 +695,15 @@ export default function PlanPage() {
           <div className="herb-card">
             <div style={eyebrowStyle}>Plan my week</div>
             <div style={{ fontSize: 18, fontWeight: 700 }}>Sign in to plan your week.</div>
+            {/* Dev-phase demo entry — no account needed (Karum, 22 Nov 2026). */}
+            <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button type="button" className="herb-btn herb-btn-primary" onClick={onDemo}>
+                Enter the demo — no account needed
+              </button>
+              <Link href="/login" className="herb-btn herb-btn-secondary" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                Log in
+              </Link>
+            </div>
           </div>
         ) : (
           <>
