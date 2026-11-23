@@ -423,7 +423,7 @@ select:focus {
 }
 @media (min-width: 720px) { .herb-sheet { border-radius: 20px; padding: 24px; } }
 
-@media (prefers-reders-reduced-motion: no-preference) {
+@media (prefers-reduced-motion: no-preference) {
   .herb-sheet { animation: sheet-in 240ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
   @keyframes sheet-in { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
 }
