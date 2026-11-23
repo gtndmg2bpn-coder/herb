@@ -248,7 +248,6 @@ export function usePlanData() {
   function slotFor(date, meal) {
     return slots.find((s) => s.slot_date === date && s.meal === meal) || null;
   }
-
   return {
     loading, setLoading, loggedOut, setLoggedOut,
     demoBusy, setDemoBusy, weekStart, setWeekStart,
