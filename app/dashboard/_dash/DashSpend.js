@@ -2,7 +2,7 @@
 'use client';
 
 import { CREAM, INK, PINK, SPEND_CATEGORIES, money } from './dashShared';
-import { Link } from 'next/link';
+import Link from 'next/link';
 
 export function DashSpend({ p }) {
   const { binnedPence, busy, eatenPence, eatingOutPence, grocerySpendPence, offPlanPence, setSpendForm, spendForm, submitSpend, sundrySpendPence, weekTotalPence } = p;
