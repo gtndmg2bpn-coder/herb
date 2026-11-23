@@ -2,7 +2,7 @@
 'use client';
 
 import { CREAM, ChipAction, HAIRLINE, INK, MEALS, MEAL_LABELS, MEAL_WASHES, MUTED, dayLabelShort, money, slotKey } from './dashShared';
-import { Link } from 'next/link';
+import Link from 'next/link';
 import { dayLabel } from '../../../lib/dates';
 
 export function DashWeekGrid({ p }) {
@@ -51,7 +51,7 @@ export function DashWeekGrid({ p }) {
                 // Sharing one flag meant every FUTURE cook read "leftover from
                 // <its own date>" — a Saturday dish labelled as a leftover of
                 // Saturday. The guard was right; it was just also being asked a
-                // question it has no business answering.
+                //     question it has no business answering.
                 const isOwnCook =
                   (slot?.fill_source === 'batch_cook' || slot?.fill_source === 'fresh_cook') &&
                   slot?.cook_date === slot?.slot_date;
