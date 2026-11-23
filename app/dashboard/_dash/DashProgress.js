@@ -157,7 +157,7 @@ export function DashProgress({ p }) {
                 ) : null}
                 <path d={chart.predictedPath} fill="none" stroke={BLUE} strokeWidth="2.5" strokeDasharray="5,5" />
                 <path d={chart.actualPath} fill="none" stroke={PINK} strokeWidth="2.5" />
-                <circle cx={chart.lastX} cy={chart.lastY} r="4" fill={PINK" } />
+                <circle cx={chart.lastX} cy={chart.lastY} r="4" fill={PINK} />
               </svg>
               <div style={{ display: 'flex', gap: 16, marginTop: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: MUTED, fontWeight: 600 }}>
