@@ -118,6 +118,7 @@ function Toggle({ on, onChange, label }) {
 export default function PlanPage() {
   const [loading, setLoading] = useState(true);
   const [loggedOut, setLoggedOut] = useState(false);
+  const [demoBusy, setDemoBusy] = useState(false);
   const [weekStart, setWeekStart] = useState(null);
   const [days, setDays] = useState([]);
   const [freezerLots, setFreezerLots] = useState([]);
@@ -306,13 +307,20 @@ export default function PlanPage() {
   }
 
   // DEV-PHASE ONLY: one-tap demo entry on the logged-out card (Karum, 22 Nov
-  // 2026 — no sign-up in dev). Signs in as the shared Dave test user, then
-  // reloads so load() runs against the fresh session.
+  // 2026 — no sign-up in dev). Claims this browser's own throwaway demo
+  // account (seeding a sample profile + a generated week can take a few
+  // seconds, hence the busy state), then reloads so load() runs against the
+  // fresh session.
   async function onDemo() {
     setError(null);
+    setDemoBusy(true);
     const { error: demoError } = await signInAsDemo();
-    if (demoError) setError(demoError.message);
-    else window.location.reload();
+    if (demoError) {
+      setDemoBusy(false);
+      setError(demoError.message);
+    } else {
+      window.location.reload();
+    }
   }
 
   function toggleWeekAllergen(code) {
@@ -697,8 +705,8 @@ export default function PlanPage() {
             <div style={{ fontSize: 18, fontWeight: 700 }}>Sign in to plan your week.</div>
             {/* Dev-phase demo entry — no account needed (Karum, 22 Nov 2026). */}
             <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <button type="button" className="herb-btn herb-btn-primary" onClick={onDemo}>
-                Enter the demo — no account needed
+              <button type="button" className="herb-btn herb-btn-primary" onClick={onDemo} disabled={demoBusy}>
+                {demoBusy ? 'Setting up your demo…' : 'Enter the demo — no account needed'}
               </button>
               <Link href="/login" className="herb-btn herb-btn-secondary" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
                 Log in

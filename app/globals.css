@@ -131,24 +131,40 @@ select:focus {
    hatch: layout and breakpoints live here, colour tokens stay inline.
    =========================================================================== */
 
-/* The nav wraps to two and three lines on a phone, because four links at 14px
-   plus a 40px wordmark do not fit in 360px. One non-wrapping scrollable row
-   instead, and a shorter bar. */
+/* Desktop: the full link row. Phone: the row hides and the links fold into a
+   menu button + panel, same pattern as the public nav (the old scrollable row
+   hid Scan receipt and Log out off-screen with no affordance). */
 .herb-nav-links { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
 .herb-nav-links > * { white-space: nowrap; flex: 0 0 auto; }
+.herb-menu-btn { display: none; }
 @media (max-width: 720px) {
   :root { --nav-h: 52px; }
   .herb-nav { padding: 10px 16px !important; }
   .herb-nav-brand { font-size: 20px !important; }
-  .herb-nav-links {
-    gap: 16px;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-    font-size: 13px;
-    margin-left: 16px;
+  .herb-nav-links { display: none !important; }
+  .herb-menu-btn {
+    display: grid;
+    place-items: center;
+    width: 44px; height: 44px;
+    border: 1px solid #E7DFD4; border-radius: 12px;
+    background: #fff; cursor: pointer; padding: 0;
   }
-  .herb-nav-links::-webkit-scrollbar { display: none; }
+  .herb-menu-btn svg { display: block; }
+  .herb-menu-panel {
+    flex-basis: 100%;
+    display: grid;
+    padding-top: 8px;
+    border-top: 1px solid #E7DFD4;
+    margin-top: 10px;
+  }
+  .herb-menu-panel .herb-menu-item {
+    display: flex; align-items: center;
+    min-height: 52px;
+    font-size: 17px; font-weight: 700;
+    color: var(--ink); text-decoration: none;
+    border-bottom: 1px solid #E7DFD4;
+    background: none; font-family: inherit;
+  }
 }
 
 /* Page shell. Phone gets 16px gutters and room for the CaptureBar; desktop

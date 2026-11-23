@@ -92,21 +92,23 @@ export default function LoginPage() {
   }
 
   // DEV-PHASE ONLY (Karum, 22 Nov 2026 — no sign-up in dev): one-tap demo
-  // entry. Same post-login routing as a normal sign-in.
+  // entry. Claims this browser's own throwaway demo account, then the same
+  // post-login routing as a normal sign-in.
   async function onDemo() {
     setError('');
     setResetMessage('');
     setBusy(true);
-    const { data, error: demoError } = await signInAsDemo();
+    const { error: demoError } = await signInAsDemo();
     if (demoError) {
       setBusy(false);
       setError(demoError.message);
       return;
     }
+    const { data: { user } } = await getBrowserClient().auth.getUser();
     const { data: prof } = await getBrowserClient()
       .from('profiles')
       .select('onboarded_at')
-      .eq('id', data.user.id)
+      .eq('id', user.id)
       .maybeSingle();
     setBusy(false);
     router.push(prof?.onboarded_at ? '/dashboard' : '/onboarding');
@@ -269,7 +271,7 @@ export default function LoginPage() {
             fontFamily: 'inherit', cursor: 'pointer', opacity: busy ? 0.7 : 1,
           }}
         >
-          Enter the demo — no account needed
+          {busy ? 'Setting up your demo…' : 'Enter the demo — no account needed'}
         </button>
 
         <p style={{ fontSize: 13, color: MUTED, marginTop: 28 }}>
