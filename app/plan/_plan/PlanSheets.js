@@ -15,7 +15,7 @@ export function PlanShapeSheet({ p }) {
   //    Bottom sheet on a phone, centred card on desktop (the
   //    herb-sheet classes). Toggling a window edits this week
   //    immediately — mealsToPlan is the same state the outs pills,
-  //    guest rows and payloads have always derived from.
+  // guest rows and payloads have always derived from.
   return (windowsSheetOpen && (
     <div className="herb-sheet-scrim" onClick={() => setWindowsSheetOpen(false)}>
       {/* stopPropagation so tapping inside the sheet doesn't close it */}
