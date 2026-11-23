@@ -6,7 +6,7 @@ import { recipeImageUrl } from '../../../lib/recipeImage';
 
 // KIMI NOTE: module split of app/plan/page.js (2026-11-24) — bodies verbatim
 // from the single-file spec-v2 build; props arrive as one bag (p).
-export function PlanDishPicker(p) {
+export function PlanDishPicker({ p }) {
   const {
     includeIds, pinnedGaps, recipeList, recipeSearch,
     setDirty, setIncludeIds, setRecipeSearch, steerOn,

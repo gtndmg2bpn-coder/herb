@@ -7,7 +7,7 @@ import { dayLabel } from '../../../lib/dates';
 
 // KIMI NOTE: module split of app/plan/page.js (2026-11-24) — bodies verbatim
 // from the single-file spec-v2 build; props arrive as one bag (p).
-export function PlanFreezerFirst(p) {
+export function PlanFreezerFirst({ p }) {
   const {
     freezerFirst, freezerLots, setDirty, setFreezerFirst,
   } = p;
@@ -36,7 +36,7 @@ export function PlanFreezerFirst(p) {
   );
 }
 
-export function PlanCta(p) {
+export function PlanCta({ p }) {
   const {
     dirty, error, generateNow, generating,
     lastSave, planResult, save, saving,

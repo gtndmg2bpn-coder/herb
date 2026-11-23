@@ -5,7 +5,7 @@ import { ALLERGENS, ALLERGEN_LABELS, CREAM, CUISINE_TAGS, Chip, DISH_TAGS, HAIRL
 
 // KIMI NOTE: module split of app/plan/page.js (2026-11-24) — bodies verbatim
 // from the single-file spec-v2 build; props arrive as one bag (p).
-export function PlanAppetite(p) {
+export function PlanAppetite({ p }) {
   const {
     avoidMeat, dislikedCuisines, matchingLD, profileAllergens,
     setAvoidMeat, setDirty, setWeekCuisines, setWeekDishTypes,

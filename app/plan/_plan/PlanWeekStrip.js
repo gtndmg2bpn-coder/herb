@@ -6,7 +6,7 @@ import { PlanSlotCard } from './PlanSlotCard';
 
 // KIMI NOTE: module split (2026-11-24) — the strip is the spec-v2 week grid;
 // each meal slot renders through PlanSlotCard (same DOM as the single-file build).
-export function PlanWeekStrip(p) {
+export function PlanWeekStrip({ p }) {
   const {
     addGuestFor, days, guests, mealsToPlan,
     recipeByIdMap, removeGuest, shortDayLabel, slots,

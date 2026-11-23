@@ -7,7 +7,7 @@ import { dayLabel } from '../../../lib/dates';
 
 // KIMI NOTE: module split of app/plan/page.js (2026-11-24) — bodies verbatim
 // from the single-file spec-v2 build; props arrive as one bag (p).
-export function PlanResultPanel(p) {
+export function PlanResultPanel({ p }) {
   const {
     days, planResult,
   } = p;

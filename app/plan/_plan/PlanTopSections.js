@@ -6,7 +6,7 @@ import { dayLabel } from '../../../lib/dates';
 
 // KIMI NOTE: module split of app/plan/page.js (2026-11-24) — bodies verbatim
 // from the single-file spec-v2 build; props arrive as one bag (p).
-export function PlanHeader(p) {
+export function PlanHeader({ p }) {
   const {
     changeStart, days, weekStart,
   } = p;
@@ -30,7 +30,7 @@ export function PlanHeader(p) {
   );
 }
 
-export function PlanShapeCard(p) {
+export function PlanShapeCard({ p }) {
   const {
     mealsToPlan, setWindowsSheetOpen,
   } = p;
@@ -81,7 +81,7 @@ export function PlanShapeCard(p) {
   );
 }
 
-export function PlanBatchDays(p) {
+export function PlanBatchDays({ p }) {
   const {
     batchDays, days, setBatchDays, setDirty,
   } = p;
