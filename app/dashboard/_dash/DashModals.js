@@ -2,7 +2,7 @@
 'use client';
 
 import { CREAM, HAIRLINE, INK, MUTED, PINK, darkPillButton, formatDelta, formatWeight, outlinePillButton } from './dashShared';
-import { Link } from 'next/link';
+import Link from 'next/link';
 
 export function DashModals({ p }) {
   const { busy, confirmProposal, profile, proposal, proposalError, setProposal, setProposalError } = p;
