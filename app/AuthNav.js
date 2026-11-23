@@ -5,6 +5,8 @@
 //   phone the links fold into a menu button (before, they were simply hidden,
 //   so a phone visitor had no way to reach any page but the homepage).
 // Logged in: the app nav (Hi {name}, Plan, Recipes, Shopping list, Scan receipt).
+//   Phone gets the same menu treatment — the old scrollable link row hid Scan
+//   receipt and Log out off-screen with no affordance (mobile audit, 23 Nov 2026).
 // Hidden on the auth pages — those are full split-screen layouts with their own logo.
 //
 // The bar renders straight away for everyone; only the right-hand side waits for
@@ -78,9 +80,21 @@ export default function AuthNav() {
   if (HIDDEN_ON.includes(pathname)) return null;
 
   if (name) {
+    // KIMI NOTE: phone gets the same menu treatment as the public nav — the old
+    // scrollable link row hid Scan receipt and Log out off-screen with no visual
+    // affordance (mobile audit, 23 Nov 2026). The panel renders inside the sticky
+    // nav so it stays pinned while open.
+    const appLinks = [
+      { href: '/dashboard', label: `Hi, ${name}` },
+      { href: '/plan', label: 'Plan' },
+      { href: '/recipes', label: 'Recipes' },
+      { href: '/shopping', label: 'Shopping list' },
+      { href: '/capture', label: 'Scan receipt' },
+    ];
     return (
       <nav className="herb-nav" style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        flexWrap: 'wrap',
         padding: '16px 32px', position: 'sticky', top: 0,
         background: 'rgba(251,247,241,.92)', backdropFilter: 'blur(12px)',
         zIndex: 100, borderBottom: '1px solid #E7DFD4',
@@ -102,6 +116,31 @@ export default function AuthNav() {
             Log out
           </button>
         </div>
+        <button
+          type="button"
+          className="herb-menu-btn"
+          aria-expanded={menuOpen}
+          aria-controls="app-menu"
+          aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+          onClick={() => setMenuOpen((o) => !o)}
+        >
+          <MenuIcon open={menuOpen} />
+        </button>
+        {menuOpen ? (
+          <div id="app-menu" className="herb-menu-panel">
+            {appLinks.map((l) => (
+              <Link key={l.href} href={l.href} className="herb-menu-item">{l.label}</Link>
+            ))}
+            <button
+              type="button"
+              className="herb-menu-item"
+              onClick={signOut}
+              style={{ cursor: 'pointer', textAlign: 'left', width: '100%', border: 0, borderBottom: '1px solid #E7DFD4', padding: 0 }}
+            >
+              Log out
+            </button>
+          </div>
+        ) : null}
       </nav>
     );
   }

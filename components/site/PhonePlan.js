@@ -31,7 +31,7 @@ export default function PhonePlan({ picks }) {
       <div className="s-phone-inner">
         <div className="s-phone-top">
           <span className="s-phone-title">Your week</span>
-          <span className="s-chip">80 kg · losing</span>
+          <span className="s-chip">80 kg · reference</span>
         </div>
         {days.map((d) => (
           <div className="s-phone-day" key={d.name}>
