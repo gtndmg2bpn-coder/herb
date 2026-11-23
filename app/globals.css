@@ -421,6 +421,24 @@ select:focus {
   @keyframes sheet-in { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
 }
 
+/* Week strip (/plan, spec v2): seven day cards. Phone: one snap-scrolling
+   row, each day about 80% of the viewport — swipe day by day. Desktop: a
+   7-column grid. Same markup, like .herb-carousel but per-day snap. */
+.herb-week {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-snap-type: x mandatory;
+  padding-bottom: 4px;
+}
+.herb-week::-webkit-scrollbar { display: none; }
+.herb-week > * { flex: 0 0 auto; scroll-snap-align: start; width: min(80vw, 320px); }
+@media (min-width: 721px) {
+  .herb-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); overflow: visible; }
+  .herb-week > * { width: auto; }
+}
+
 /* ===========================================================================
    PUBLIC SITE — 8 November 2026 rebuild
    Mobile first: every rule below is the phone; min-width queries add desktop.
