@@ -1,7 +1,7 @@
 // app/dashboard/_dash/DashFooter.js — split from app/dashboard/page.js (spec v2 pantry refresh)
 'use client';
 
-import { Link } from 'next/link';
+import Link from 'next/link';
 
 export function DashFooter({ p }) {
   const {  } = p;
