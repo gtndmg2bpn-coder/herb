@@ -43,27 +43,42 @@ export default function AuthNav() {
 
   useEffect(() => {
     let alive = true;
+    async function applySession(session) {
+      if (!session) {
+        setName(null);
+        return;
+      }
+      const supabase = getBrowserClient();
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('display_name')
+        .eq('id', session.user.id)
+        .maybeSingle();
+      if (!alive) return;
+      setName(prof?.display_name || session.user.email || 'there');
+    }
     async function load() {
       try {
         const supabase = getBrowserClient();
         const { data: { session } } = await supabase.auth.getSession();
         if (!alive) return;
-        if (session) {
-          const { data: prof } = await supabase
-            .from('profiles')
-            .select('display_name')
-            .eq('id', session.user.id)
-            .maybeSingle();
-          if (!alive) return;
-          setName(prof?.display_name || session.user.email || 'there');
-        }
+        await applySession(session);
       } finally {
         if (alive) setReady(true);
       }
     }
     load();
+    // Sign-in happens on /login while this nav is already mounted (the root
+    // layout persists across client-side navigation), so a mount-time-only
+    // check never sees the session — the nav stayed in the logged-out state
+    // after a successful login (found 24 Nov 2026). Listen for the auth
+    // change and re-apply.
+    const { data: sub } = getBrowserClient().auth.onAuthStateChange((_event, session) => {
+      if (alive) applySession(session);
+    });
     return () => {
       alive = false;
+      sub.subscription.unsubscribe();
     };
   }, []);
 
