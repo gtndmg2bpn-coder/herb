@@ -2,7 +2,7 @@
 'use client';
 
 import { BLUE, CHART_H, CHART_W, CREAM, GREEN, HAIRLINE, INK, MUTED, PINK, ageFromDob, darkPillButton, formatDelta, formatWeight, inputStyle } from './dashShared';
-import { Link } from 'next/link';
+import Link from 'next/link';
 
 export function DashProgress({ p }) {
   const { busy, chart, checkin, currentWeight, goalKg, profile, saveProfile, setWeightInput, setWeightPounds, setWeightStones, submitWeight, weightHistory, weightInput, weightPounds, weightStones } = p;
@@ -157,7 +157,7 @@ export function DashProgress({ p }) {
                 ) : null}
                 <path d={chart.predictedPath} fill="none" stroke={BLUE} strokeWidth="2.5" strokeDasharray="5,5" />
                 <path d={chart.actualPath} fill="none" stroke={PINK} strokeWidth="2.5" />
-                <circle cx={chart.lastX} cy={chart.lastY} r="4" fill={PINK} />
+                <circle cx={chart.lastX} cy={chart.lastY} r="4" fill={PINK" } />
               </svg>
               <div style={{ display: 'flex', gap: 16, marginTop: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: MUTED, fontWeight: 600 }}>
