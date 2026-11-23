@@ -245,6 +245,9 @@ export function useDashData() {
     }
   }, [eatingForm]);
 
+  // If the chooser is open when allergens/dislikes change, rebuild its options
+  // with the new filters so the list is never stale.
+
   // Auto-dismiss the green toast a few seconds after it appears.
   useEffect(() => {
     if (!notice) return undefined;
