@@ -245,27 +245,6 @@ export function useDashData() {
     }
   }, [eatingForm]);
 
-  async function refreshAfterAction() {
-    try {
-      const { data: { session: live } } = await getBrowserClient().auth.getSession();
-      if (live) await loadAll(live);
-    } catch (err) {
-      console.error('refreshAfterAction failed:', err);
-      setError('Could not refresh after the last action — reload if the screen looks stale.');
-    }
-  }
-
-  async function runAction(message, action) {
-    if (!window.confirm(message)) return false;
-    setBusy(true);
-    setError('');
-    const { error: actionError } = await action();
-    if (actionError) setError(actionError.message);
-    await refreshAfterAction();
-    setBusy(false);
-    return !actionError;
-  }
-
   // Auto-dismiss the green toast a few seconds after it appears.
   useEffect(() => {
     if (!notice) return undefined;
