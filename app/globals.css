@@ -175,6 +175,13 @@ select:focus {
   padding: 32px 20px 64px;
   display: grid;
   gap: 24px;
+  /* KIMI NOTE (2026-11-24 defect fix): without an explicit track the single
+     auto column sizes to the max-content of its items — the /plan week
+     strip's max-content is ~7728px, so the column overflowed the 860px shell
+     and every day card rendered ~1100px wide. minmax(0, 1fr) pins the
+     column to the shell width; harmless elsewhere (free space previously
+     stretched auto tracks to the same width anyway). */
+  grid-template-columns: minmax(0, 1fr);
 }
 @media (max-width: 720px) {
   .herb-page { padding: 16px 16px 96px; gap: 16px; }
@@ -441,15 +448,25 @@ select:focus {
 .s-rule { border-top: 1px solid var(--hairline); }
 
 .s-eyebrow {
-  font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
-  color: var(--muted); margin: 0 0 14px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 14px;
 }
 .s-h1 {
-  font-weight: 800; letter-spacing: -.035em; line-height: 1.02; margin: 0;
+  font-weight: 800;
+  letter-spacing: -.035em;
+  line-height: 1.02;
+  margin: 0;
   font-size: clamp(40px, 10vw, 76px);
 }
 .s-h2 {
-  font-weight: 800; letter-spacing: -.03em; line-height: 1.08; margin: 0;
+  font-weight: 800;
+  letter-spacing: -.03em;
+  line-height: 1.08;
+  margin: 0;
   font-size: clamp(28px, 6vw, 46px);
 }
 .s-h3 { font-weight: 700; letter-spacing: -.02em; line-height: 1.2; margin: 0; font-size: 19px; }
@@ -514,7 +531,6 @@ select:focus {
 .s-hero h1 em { color: var(--pink); }
 .s-proof { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 28px; font-size: 14px; color: var(--muted); }
 .s-proof b { color: var(--ink); }
-
 .s-hero-visual { position: relative; display: flex; justify-content: center; }
 .s-hero-photo {
   position: absolute; inset: 8% 0 8% 18%; border-radius: 28px;
@@ -582,7 +598,7 @@ select:focus {
 .s-card-name { font-size: 19px; line-height: 1.2; margin: 0; }
 .s-card-stats { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: auto; padding-top: 14px; }
 .s-card-stat b { display: block; font-size: 17px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-.s-card-stat span { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.s-card-stat span { display: block; font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
 .s-card-statrow { border-top: 1px solid var(--hairline); margin-top: 14px; }
 
 /* ---- Recipe book controls ---------------------------------------------- */
@@ -653,7 +669,7 @@ select:focus {
 .s-stats4 > div { text-align: center; padding: 14px 4px; border-right: 1px solid var(--hairline); }
 .s-stats4 > div:last-child { border-right: 0; }
 .s-stats4 b { display: block; font-size: 20px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-.s-stats4 span { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.s-stats4 span { display: block; font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
 .s-facts { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 18px 0 0; padding: 0; }
 .s-facts > div { display: flex; gap: 6px; align-items: baseline; font-size: 14px; }
 .s-facts dt { margin: 0; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
@@ -715,7 +731,16 @@ select:focus {
 }
 .herb-week::-webkit-scrollbar { display: none; }
 .herb-week > * { flex: 0 0 auto; scroll-snap-align: start; width: min(80vw, 320px); }
+/* KIMI NOTE (2026-11-24 defect fix): a grid item's automatic minimum is
+   min-width:auto = its min-content size. The strip's <section> is a direct
+   child of the .herb-page grid, and the day cards' min-content (~1095px)
+   blew the section out to 7 × that, so the 1fr tracks resolved against a
+   ~7728px container and every day card rendered ~1100px wide with the page
+   scrolling sideways (founder-reported: desktop week strip broken). The two
+   min-width:0 declarations restore the 860px definite width chain:
+   section shrinks to the page, then each day card shrinks into its track. */
+.herb-week-section { min-width: 0; }
 @media (min-width: 721px) {
   .herb-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); overflow: visible; }
-  .herb-week > * { width: auto; }
+  .herb-week > * { width: auto; min-width: 0; }
 }

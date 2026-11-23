@@ -21,7 +21,7 @@ export function PlanWeekStrip({ p }) {
   //    slot renders as a blue chip. Empty slots carry the two
   // pre-generation actions. Guests live on the day card.
   return (
-    <section>
+    <section className="herb-week-section">
       <div className="herb-week">
         {days.map((date) => {
           const daySlots = slots.filter((s) => s.slot_date === date);
