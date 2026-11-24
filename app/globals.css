@@ -653,7 +653,7 @@ select:focus {
 /* ---- Recipe page -------------------------------------------------------- */
 .s-recipe-head { display: grid; gap: 24px; padding: 20px 0 8px; }
 @media (min-width: 900px) { .s-recipe-head { grid-template-columns: 1.1fr 1fr; gap: 48px; align-items: start; padding-top: 28px; } }
-.s-recipe-img { aspect-ratio: 4 / 3; border-radius: 22px; background-size: cover; background-position: center; background-color: var(--sand-a); margin: 0 -20px; border-radius: 0; }
+.s-recipe-img { aspect-ratio: 4 / 3; background-size: cover; background-position: center; background-color: var(--sand-a); margin: 0 -20px; border-radius: 0; }
 @media (min-width: 600px) { .s-recipe-img { margin: 0; border-radius: 22px; } }
 .s-recipe-title { font-size: clamp(32px, 7vw, 48px); line-height: 1.05; letter-spacing: -.02em; margin: 0; }
 .s-stats4 { display: grid; grid-template-columns: repeat(4, 1fr); background: #fff; border: 1px solid var(--hairline); border-radius: 16px; margin-top: 22px; }
@@ -709,29 +709,47 @@ select:focus {
 .s-panel-ink .s-list li { color: rgba(251,247,241,.82); }
 .s-footer .s-brand { font-size: 22px; display: inline-block; }
 
-/* Week strip (/plan, spec v2): seven day cards. Phone: one snap-scrolling
-   row, each day about 80% of the viewport — swipe day by day. Desktop: a
-   7-column grid. Same markup, like .herb-carousel but per-day snap. */
+/* Week strip (/plan, spec v2): seven day ROWS. Founder ruling 2026-11-24:
+   "the day's meal plan should go left to right not top to bottom. It will
+   look better on the page." Each day is a full-width card and its meal
+   slots flow left-to-right inside the row. Phone: the day's slots form one
+   snap-scrolling row (~128px cards — swipe to see all five). Desktop: the
+   slots share the row width equally, so any slot count from the profile's
+   planned meals lays out evenly. */
 .herb-week {
   display: flex;
+  flex-direction: column;
   gap: 10px;
+}
+.herb-week > * { width: 100%; min-width: 0; }
+.herb-day-slots {
+  display: flex;
+  gap: 8px;
   overflow-x: auto;
   scrollbar-width: none;
   scroll-snap-type: x mandatory;
-  padding-bottom: 4px;
+  padding-bottom: 2px;
 }
-.herb-week::-webkit-scrollbar { display: none; }
-.herb-week > * { flex: 0 0 auto; scroll-snap-align: start; width: min(80vw, 320px); }
-/* KIMI NOTE (2026-11-24 defect fix): a grid item's automatic minimum is
-   min-width:auto = its min-content size. The strip's <section> is a direct
-   child of the .herb-page grid, and the day cards' min-content (~1095px)
-   blew the section out to 7 × that, so the 1fr tracks resolved against a
-   ~7728px container and every day card rendered ~1100px wide with the page
-   scrolling sideways (founder-reported: desktop week strip broken). The two
-   min-width:0 declarations restore the 860px definite width chain:
-   section shrinks to the page, then each day card shrinks into its track. */
+.herb-day-slots::-webkit-scrollbar { display: none; }
+.herb-day-slots > * { flex: 0 0 128px; scroll-snap-align: start; min-width: 0; }
+/* KIMI NOTE (2026-11-24 defect fix): keep the strip section, day cards and
+   slot cards shrinkable (flex/grid item min-width:auto defaults to
+   min-content, which previously blew the 860px page column out to ~7728px
+   and rendered every day card ~1100px wide with sideways page scroll). */
 .herb-week-section { min-width: 0; }
 @media (min-width: 721px) {
-  .herb-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); overflow: visible; }
-  .herb-week > * { width: auto; min-width: 0; }
+  /* Grid (not flex): with flex:1 1 0, Chromium sizes items from their
+     content when they carry padding/border, so the five slots came out
+     146-166px wide in the same row. Grid tracks are equal regardless of
+     content. --slots comes from the strip (profile's planned-meal count);
+     the fixed repeat(5,…) line is the fallback for engines without var()
+     in repeat() — worst case a 3-meal profile leaves two empty tracks. */
+  .herb-day-slots {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(var(--slots, 5), minmax(0, 1fr));
+    overflow: visible;
+    scroll-snap-type: none;
+  }
+  .herb-day-slots > * { width: auto; min-width: 0; }
 }

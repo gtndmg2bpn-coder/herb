@@ -6,20 +6,24 @@ import { PlanSlotCard } from './PlanSlotCard';
 
 // KIMI NOTE: module split (2026-11-24) — the strip is the spec-v2 week grid;
 // each meal slot renders through PlanSlotCard (same DOM as the single-file build).
+// KIMI NOTE (2026-11-24 founder ruling): days are full-width ROWS and the
+// meal slots flow left-to-right inside the day (.herb-day-slots), not a
+// vertical stack — layout lives in globals.css (.herb-week / .herb-day-slots).
 export function PlanWeekStrip({ p }) {
   const {
     addGuestFor, days, guests, mealsToPlan,
     recipeByIdMap, removeGuest, shortDayLabel, slots,
     updateGuest,
   } = p;
-  // ── 2 · Your week — the strip (spec v2) ─────────────────
-  //    The week IS the page: seven day cards, each active window a
-  //    slot. A planned dish renders as a picture card with kcal and
-  //    cost — tapping the card opens the recipe (the founder's
-  //    core ask); the ⋯ button opens the slot sheet (out / eating
-  //    out / swap / portions). An out constraint or an eating-out
-  //    slot renders as a blue chip. Empty slots carry the two
-  // pre-generation actions. Guests live on the day card.
+  // ── 2 · Your week — the strip (spec v2, day-row layout 2026-11-24) ──
+  //    The week IS the page: seven day rows, each active window a
+  //    slot flowing left-to-right inside the day. A planned dish
+  //    renders as a picture card with kcal and cost — tapping the
+  //    card opens the recipe (the founder's core ask); the ⋯ button
+  //    opens the slot sheet (out / eating out / swap / portions). An
+  //    out constraint or an eating-out slot renders as a blue chip.
+  //    Empty slots carry the two pre-generation actions. Guests live
+  //    on the day card.
   return (
     <section className="herb-week-section">
       <div className="herb-week">
@@ -33,7 +37,7 @@ export function PlanWeekStrip({ p }) {
             0
           );
           return (
-            <div key={date} style={{ background: '#fff', border: `1px solid ${HAIRLINE}`, borderRadius: 14, padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div key={date} style={{ background: '#fff', border: `1px solid ${HAIRLINE}`, borderRadius: 14, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
                 <span style={{ fontSize: 12.5, fontWeight: 700 }}>{shortDayLabel(date)}</span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -49,9 +53,11 @@ export function PlanWeekStrip({ p }) {
                   </button>
                 </span>
               </div>
-              {mealsToPlan.map((meal) => (
-                <PlanSlotCard key={meal} p={p} date={date} meal={meal} />
-              ))}
+              <div className="herb-day-slots" style={{ '--slots': mealsToPlan.length }}>
+                {mealsToPlan.map((meal) => (
+                  <PlanSlotCard key={meal} p={p} date={date} meal={meal} />
+                ))}
+              </div>
               {dayGuests.map((guest) => (
                 <div key={guest.index} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', borderTop: `1px solid ${HAIRLINE}`, paddingTop: 6 }}>
                   <span style={{ fontSize: 11, color: MUTED, fontWeight: 600 }}>Guests</span>
