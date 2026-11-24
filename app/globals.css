@@ -653,7 +653,7 @@ select:focus {
 /* ---- Recipe page -------------------------------------------------------- */
 .s-recipe-head { display: grid; gap: 24px; padding: 20px 0 8px; }
 @media (min-width: 900px) { .s-recipe-head { grid-template-columns: 1.1fr 1fr; gap: 48px; align-items: start; padding-top: 28px; } }
-.s-recipe-img { aspect-ratio: 4 / 3; background-size: cover; background-position: center; background-color: var(--sand-a); margin: 0 -20px; border-radius: 0; }
+.s-recipe-img { aspect-ratio: 4 / 3; border-radius: 22px; background-size: cover; background-position: center; background-color: var(--sand-a); margin: 0 -20px; border-radius: 0; }
 @media (min-width: 600px) { .s-recipe-img { margin: 0; border-radius: 22px; } }
 .s-recipe-title { font-size: clamp(32px, 7vw, 48px); line-height: 1.05; letter-spacing: -.02em; margin: 0; }
 .s-stats4 { display: grid; grid-template-columns: repeat(4, 1fr); background: #fff; border: 1px solid var(--hairline); border-radius: 16px; margin-top: 22px; }
